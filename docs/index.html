@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Byte Pair Lens: see how GPT tokenizers split text into UTF-8 bytes and BPE merges, with script-level vocabulary breakdowns and a CJK coverage map.">
+<title>Byte Pair Lens</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400&display=swap">
+<style>
+/* Layout: a byte inspector. One column, mono-first; the token strip is the hero, breakdown and vocab browser below. */
+:root{
+  --bg:#f6f5f0;--surface:#ffffff;--fg:#1c1b17;--muted:#6b685c;--line:#dad7cc;--accent:#2a5bd7;--frag:#c8451e;--frag-bg:#fbe5dc;--tok-a:#e6e0f5;--tok-b:#dcebdc;--tok-c:#f6e9c8;--tok-d:#d9e8f6;--tok-e:#f3dfe8;
+  --mono:"IBM Plex Mono","SFMono-Regular",Menlo,Consolas,monospace;--sans:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;--cjk:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15150f;--surface:#1f1f18;--fg:#ebe8dc;--muted:#9a978a;--line:#33332a;--accent:#7ea3ff;--frag:#ff8a5c;--frag-bg:#3d2016;--tok-a:#33305a;--tok-b:#243a26;--tok-c:#4a3d1a;--tok-d:#1f3550;--tok-e:#4a2438;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15150f;--surface:#1f1f18;--fg:#ebe8dc;--muted:#9a978a;--line:#33332a;--accent:#7ea3ff;--frag:#ff8a5c;--frag-bg:#3d2016;--tok-a:#33305a;--tok-b:#243a26;--tok-c:#4a3d1a;--tok-d:#1f3550;--tok-e:#4a2438;color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5;padding:24px 16px 48px}
+.wrap{max-width:960px;margin:0 auto;display:grid;gap:28px}
+h1{font-family:var(--mono);font-weight:600;font-size:1.5rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px;font-weight:600}
+p{margin:0;max-width:65ch}
+.sub{color:var(--muted);font-size:.9rem}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;font-family:var(--mono);font-size:.8rem}
+.seg button{background:var(--surface);color:var(--fg);border:0;padding:6px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+textarea{width:100%;min-height:90px;font:1rem/1.6 var(--cjk),var(--sans);background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;resize:vertical}
+textarea:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.stats{display:flex;gap:20px;flex-wrap:wrap;font-family:var(--mono);font-size:.85rem;margin-top:10px;font-variant-numeric:tabular-nums}
+.stats b{font-weight:600;color:var(--accent)}
+.strip{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;font-family:var(--cjk),var(--mono)}
+.tok{border-radius:4px;padding:2px 6px;border:1px solid transparent;display:flex;flex-direction:column;min-width:0}
+.tok .t{font-size:1.05rem;white-space:pre}
+.tok .b{font-family:var(--mono);font-size:.62rem;color:var(--muted);letter-spacing:.02em}
+.tok.frag{background:var(--frag-bg);border-color:var(--frag)}
+.tok.frag .t{color:var(--frag);font-family:var(--mono);font-size:.8rem}
+.tok.frag .b{color:var(--frag)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin-top:10px}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;border:1px solid var(--line)}
+.legend .f::before{background:var(--frag-bg);border-color:var(--frag)}
+.legend .w::before{background:var(--tok-a)}
+.samples{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.samples button{font:inherit;font-size:.78rem;background:none;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--fg);cursor:pointer;font-family:var(--cjk),var(--sans)}
+.samples button:hover{border-color:var(--accent)}
+.bars{display:grid;gap:5px;font-family:var(--mono);font-size:.78rem;font-variant-numeric:tabular-nums}
+.bar{display:grid;grid-template-columns:minmax(120px,170px) 1fr 86px;align-items:center;gap:10px;cursor:pointer;border-radius:4px;padding:2px 4px;border:0;background:none;color:var(--fg);text-align:left;font:inherit}
+.bar:hover,.bar[aria-pressed="true"]{background:var(--surface)}
+.bar .lab{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .rail{display:block;height:12px;background:var(--line);border-radius:2px;overflow:hidden;min-width:0}
+.bar .fill{display:block;height:100%;background:var(--accent);transition:width .3s}
+.bar[data-cat="1"] .fill{background:var(--frag)}
+.bar .n{text-align:right;color:var(--muted)}
+.hint{font-size:.78rem;color:var(--muted);margin-top:8px}
+.ctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+input[type=search],select{font:inherit;font-size:.85rem;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+input[type=search]{flex:1;min-width:160px;font-family:var(--cjk),var(--mono)}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:.8rem;font-variant-numeric:tabular-nums}
+th,td{padding:5px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-weight:500;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}
+td.txt{font-family:var(--cjk),var(--mono);font-size:.95rem}
+td.hex{color:var(--muted)}
+td.cat{color:var(--muted);font-size:.72rem}
+.pager{display:flex;gap:8px;align-items:center;margin-top:8px;font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+.pager button{font:inherit;background:var(--surface);border:1px solid var(--line);border-radius:4px;color:var(--fg);padding:3px 10px;cursor:pointer}
+.pager button:disabled{opacity:.4;cursor:default}
+.loading{font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:640px){.two{grid-template-columns:1fr}.bar{grid-template-columns:minmax(90px,120px) 1fr 70px}}
+@media (prefers-reduced-motion:reduce){.bar .fill{transition:none}}
+.ws{opacity:.5}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tabs button{font:600 .85rem var(--mono);background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;color:var(--muted);cursor:pointer;margin-bottom:-1px}
+.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.mapwrap{display:grid;grid-template-columns:1fr minmax(220px,280px);gap:16px}
+@media (max-width:760px){.mapwrap{grid-template-columns:1fr}}
+.mapscroll{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:6px;background:var(--surface);position:relative}
+.mapscroll canvas{display:block;image-rendering:pixelated}
+.mlegend{display:flex;gap:14px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin:8px 0}
+.mlegend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.mlegend .whole::before{background:var(--accent)}
+.mlegend .fragrow::before{background:var(--frag)}
+.mlegend .none::before{background:var(--line)}
+.detail{font-family:var(--mono);font-size:.8rem;display:grid;gap:6px;align-content:start}
+.detail .big{font-family:var(--cjk);font-size:4rem;line-height:1;text-align:center;padding:12px 0}
+.detail dl{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin:0}
+.detail dt{color:var(--muted)}.detail dd{margin:0;word-break:break-all}
+.detail .split{display:flex;gap:4px;flex-wrap:wrap}
+.detail .split span{padding:2px 6px;border-radius:4px;background:var(--tok-a)}
+.detail .split span.frag{background:var(--frag-bg);color:var(--frag)}
+.rowstats{font-family:var(--mono);font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px}
+.rowstats b{color:var(--accent);font-weight:600}
+footer{font-size:.78rem;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+footer a{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Byte Pair Lens</h1>
+      <p class="sub">How GPT tokenizers cut text into bytes and merges. Paste anything; byte-fragment tokens are the ones that don't form a whole character.</p>
+    </div>
+    <div class="seg" role="group" aria-label="Tokenizer">
+      <button id="btn-r5" aria-pressed="false" data-enc="r50k_base">r50k · GPT-2/3</button>
+      <button id="btn-cl" aria-pressed="true" data-enc="cl100k_base">cl100k · GPT-4</button>
+      <button id="btn-o2" aria-pressed="false" data-enc="o200k_base">o200k · GPT-4o</button>
+    </div>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-tok" aria-selected="true" aria-controls="pane-tok">Tokenizer</button>
+    <button role="tab" id="tab-map" aria-selected="false" aria-controls="pane-map">CJK map</button>
+  </div>
+
+  <div id="pane-map" role="tabpanel" hidden>
+    <section>
+      <h2>Han characters by UTF-8 byte prefix</h2>
+      <p class="sub" style="margin-bottom:10px">Each row is one 2-byte UTF-8 prefix (e.g. <span style="font-family:var(--mono)">E4 B8</span>), each column the third byte 80–BF, so a row holds 64 consecutive code points. A cell is blue when the selected tokenizer has that character as a whole token. Rows with an orange marker are prefixes that exist as a fragment token in the vocab, which is how the uncovered characters in that row get encoded.</p>
+      <div class="ctl">
+        <select id="blocksel" aria-label="Unicode block"><option value="main">CJK Unified Ideographs U+4E00–9FFF</option><option value="exta">Extension A U+3400–4DBF</option></select>
+        <select id="cellsel" aria-label="Cell size"><option value="9">cells 9px</option><option value="14" selected>cells 14px</option><option value="22">cells 22px (show glyphs)</option></select>
+      </div>
+      <div class="rowstats" id="mapstats"></div>
+      <div class="mlegend"><span class="whole">whole token</span><span class="none">needs byte fragments</span><span class="fragrow">row prefix is a fragment token</span></div>
+      <div class="mapwrap">
+        <div class="mapscroll" id="mapscroll"><canvas id="map"></canvas></div>
+        <div class="detail" id="detail"><p class="sub">Hover or tap a cell.</p></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="pane-tok" role="tabpanel">
+  <section>
+    <h2>Tokenize</h2>
+    <textarea id="input" spellcheck="false">今天天气很好。The weather is nice today. 날씨가 좋다 — numéro 2024!</textarea>
+    <div class="samples" id="samples">
+      <button data-s="今天天气很好。">今天天气很好</button>
+      <button data-s="我爱你，语言模型。">我爱你，语言模型</button>
+      <button data-s="龘齉爨靐">rare: 龘齉爨靐</button>
+      <button data-s="Większość programów używa UTF-8.">Polish</button>
+      <button data-s="The quick brown fox jumps over the lazy dog.">English</button>
+      <button data-s="def tokenize(text: str) -> list[int]:
+    return [ord(c) for c in text]">Python</button>
+      <button data-s="😀🎉 ≥ 1234567">emoji + digits</button>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="strip" id="strip"><span class="loading">loading vocab…</span></div>
+    <div class="legend"><span class="w">whole token (one colour per token)</span><span class="f">byte fragment — not a complete UTF-8 character</span></div>
+  </section>
+
+  <div class="two">
+    <section class="panel">
+      <h2>Vocabulary by script <span id="vsize"></span></h2>
+      <div class="bars" id="bars"></div>
+      <p class="hint">Bar length is on a square-root scale so small categories stay visible; the numbers are exact. Click a row to browse that category. Script is assigned by Unicode range of the token's decoded text; "Han" includes kanji and hanja since they are unified.</p>
+    </section>
+    <section class="panel">
+      <h2>Han coverage</h2>
+      <div id="han" class="sub"></div>
+    </section>
+  </div>
+
+  <section>
+    <h2>Browse vocabulary</h2>
+    <div class="ctl">
+      <input type="search" id="q" placeholder="search token text, e.g. 天 or ing" aria-label="Search tokens">
+      <select id="catsel" aria-label="Category"><option value="-1">all categories</option></select>
+      <select id="sort" aria-label="Sort"><option value="rank">by merge rank</option><option value="len">by length (longest first)</option></select>
+    </div>
+    <div class="tbl"><table><thead><tr><th>rank</th><th>token</th><th>bytes</th><th>len</th><th>category</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <div class="pager"><button id="prev">‹ prev</button><span id="pginfo"></span><button id="next">next ›</button></div>
+  </section>
+  </div>
+
+  <footer>Byte Pair Lens · vocabularies from <a href="https://github.com/openai/tiktoken">tiktoken</a>; BPE runs client-side and matches the reference encoder.</footer>
+</div>
+
+<script>
+(function(){
+const $=s=>document.querySelector(s);
+const PAT={
+  r50k_base:/'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/gu,
+  cl100k_base:/(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+/gu,
+  o200k_base:/[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n\/]*|\s*[\r\n]+|\s+(?!\S)|\s+/gu
+};
+const TOKCOL=['var(--tok-a)','var(--tok-b)','var(--tok-c)','var(--tok-d)','var(--tok-e)'];
+const cache={}; let V=null, curEnc='cl100k_base';
+const dec=new TextDecoder('utf-8',{fatal:true});
+const encU=new TextEncoder();
+
+function b64ToBytes(s){const b=atob(s);const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
+function key(bytes,i,j){let s='';for(let k=i;k<j;k++)s+=String.fromCharCode(bytes[k]);return s;}
+function hex(b){return Array.from(b,x=>x.toString(16).toUpperCase().padStart(2,'0')).join(' ');}
+
+async function load(enc){
+  if(cache[enc])return cache[enc];
+  $('#strip').innerHTML='<span class="loading">loading '+enc+' vocab…</span>';
+  const r=await fetch(enc+'.json'); const j=await r.json();
+  const bytes=j.tokens.map(b64ToBytes);
+  const ranks=new Map(); bytes.forEach((b,i)=>ranks.set(key(b,0,b.length),i));
+  const text=bytes.map(b=>{try{return dec.decode(b)}catch(e){return null}});
+  cache[enc]={...j,bytes,ranks,text};
+  return cache[enc];
+}
+
+function bpe(bytes){ // merge lowest-rank adjacent pair until none
+  let parts=[];for(let i=0;i<bytes.length;i++)parts.push([i,i+1]);
+  while(parts.length>1){
+    let best=-1,bestRank=Infinity;
+    for(let i=0;i<parts.length-1;i++){const r=V.ranks.get(key(bytes,parts[i][0],parts[i+1][1]));if(r!==undefined&&r<bestRank){bestRank=r;best=i;}}
+    if(best<0)break;
+    parts.splice(best,2,[parts[best][0],parts[best+1][1]]);
+  }
+  return parts.map(([a,b])=>V.ranks.get(key(bytes,a,b)));
+}
+function encode(str){
+  const ids=[];
+  for(const m of str.matchAll(PAT[curEnc])){
+    const b=encU.encode(m[0]);
+    const direct=V.ranks.get(key(b,0,b.length));
+    if(direct!==undefined)ids.push(direct); else ids.push(...bpe(b));
+  }
+  return ids;
+}
+
+function render(){
+  if(!V)return;
+  const s=$('#input').value; const ids=encode(s);
+  const nbytes=encU.encode(s).length, nchars=[...s].length;
+  $('#stats').innerHTML=`<span>chars <b>${nchars}</b></span><span>UTF-8 bytes <b>${nbytes}</b></span><span>tokens <b>${ids.length}</b></span><span>tokens/char <b>${nchars?(ids.length/nchars).toFixed(2):'–'}</b></span>`;
+  const strip=$('#strip'); strip.innerHTML='';
+  ids.forEach((id,i)=>{
+    const b=V.bytes[id], t=V.text[id];
+    const d=document.createElement('div'); d.className='tok';
+    if(t===null){d.classList.add('frag');}else{d.style.background=TOKCOL[i%TOKCOL.length];}
+    const tt=document.createElement('span');tt.className='t';
+    if(t===null){tt.textContent=hex(b);}else{tt.textContent=t.replace(/\n/g,'⏎').replace(/\t/g,'⇥'); if(!t.trim())tt.classList.add('ws');}
+    const bb=document.createElement('span');bb.className='b';bb.textContent=(t===null?'fragment · ':'')+'#'+id+' · '+hex(b);
+    d.append(tt,bb); strip.append(d);
+  });
+}
+
+function renderBars(){
+  const counts=new Array(V.cats.length).fill(0); V.cat.forEach(c=>counts[c]++);
+  const order=counts.map((n,i)=>i).sort((a,b)=>counts[b]-counts[a]);
+  const max=counts[order[0]], total=V.cat.length;
+  $('#vsize').textContent='· '+total.toLocaleString()+' tokens';
+  $('#bars').innerHTML=order.map(i=>`<button class="bar" data-cat="${i}" aria-pressed="false"><span class="lab">${V.cats[i]}</span><span class="rail"><span class="fill" style="width:${(100*Math.sqrt(counts[i]/max)).toFixed(1)}%"></span></span><span class="n">${counts[i].toLocaleString()} · ${(100*counts[i]/total).toFixed(1)}%</span></button>`).join('');
+  $('#bars').querySelectorAll('.bar').forEach(b=>b.onclick=()=>{$('#catsel').value=b.dataset.cat;page=0;renderTable();});
+  const sel=$('#catsel'); sel.innerHTML='<option value="-1">all categories</option>'+order.map(i=>`<option value="${i}">${V.cats[i]}</option>`).join('');
+  // Han coverage
+  const hi=V.cats.indexOf('CJK Han'); const han=[]; V.cat.forEach((c,i)=>{if(c===hi)han.push(i)});
+  const chars=new Set(); const lens={}; let firstId=null;
+  han.forEach(id=>{const t=V.text[id].trim();if(firstId===null)firstId=id;lens[[...t].length]=(lens[[...t].length]||0)+1;for(const ch of t){const o=ch.codePointAt(0);if((o>=0x3400&&o<=0x9FFF)||o>=0x20000)chars.add(ch)}});
+  const common=[...'的一是不了在人有我他这个们中来上大为和国地到以说时要就出会可也你对生能而子那得于着下自之年过发后作里用道行所然家种事成方多经么去法学如都同现当没动面起看定天分还进好小部其些主样理心她本前开但因只从想实日军者意无力它与长把机十民第公此已工使情明性知全三又关点正业外将两高间由问很最重并物手应战向头文体政美相见被利什二等产或新己制身果加西斯月话合回特代内信表化老给世位次度门任常先海通教儿原东声提立及比员解水名真论处走义各入几口认条平系气题活尔更别打女变四神总何电数安少报才结反受目太量再感建务做接必场件计管期市直德资命山金指克许统区保至队形社便空决治展马科司五基眼书非则听白却界达光放强即像难且权思王象完设式色路记南品住告类求据程北边死张该交规万取拉格望觉术领共确传师观清今切院让识候带导争运笑飞风步改收根干造言联持组每济车亲极林服快办议往元英士证近失转夫令准布始怎呢存未远叫台单影具罗字爱击流备兵连调深商算质团集百需价花党华城石级整府离况亚请技际约示复病息究线似官火断精满支视消越器容照须九增研写称企八功吗包片史委乎查轻易早曾除农找装广显吧阿李标谈吃图念六引历首医局突专费号尽另周较注语仅考落青随选奇富答俄七买楼乐局紧'].slice(0,300);
+  const covered=common.filter(c=>chars.has(c)).length;
+  $('#han').innerHTML=`<p><b style="color:var(--accent);font-family:var(--mono)">${han.length.toLocaleString()}</b> Han tokens covering <b style="color:var(--accent);font-family:var(--mono)">${chars.size.toLocaleString()}</b> distinct characters as whole tokens.</p>
+  <p style="margin-top:8px">Of the 300 most frequent Chinese characters, <b style="color:var(--accent);font-family:var(--mono)">${covered}</b> have their own token; the other ${300-covered} are split into byte fragments.</p>
+  <p style="margin-top:8px">Token length in characters: ${Object.keys(lens).sort((a,b)=>a-b).map(k=>`<span style="font-family:var(--mono)">${k}→${lens[k]}</span>`).join(', ')}</p>
+  <p style="margin-top:8px">First Han token is rank <span style="font-family:var(--mono)">#${firstId}</span> (${firstId!==null?V.text[firstId].trim():'–'}); the main Chinese block spans U+4E00–9FFF, 20,992 code points.</p>`;
+}
+
+let page=0; const PAGE=50;
+function renderTable(){
+  const q=$('#q').value, cat=+$('#catsel').value, sort=$('#sort').value;
+  let ids=[];
+  for(let i=0;i<V.cat.length;i++){if(cat>=0&&V.cat[i]!==cat)continue;if(q&&(V.text[i]===null||!V.text[i].includes(q)))continue;ids.push(i);}
+  if(sort==='len')ids.sort((a,b)=>V.bytes[b].length-V.bytes[a].length);
+  const pages=Math.max(1,Math.ceil(ids.length/PAGE)); page=Math.min(page,pages-1);
+  const slice=ids.slice(page*PAGE,(page+1)*PAGE);
+  $('#rows').innerHTML=slice.map(i=>{const t=V.text[i];const shown=t===null?'<span style="color:var(--frag)">'+hex(V.bytes[i])+'</span>':t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'⏎').replace(/\t/g,'⇥').replace(/ /g,'␣');return `<tr><td>${i}</td><td class="txt">${shown}</td><td class="hex">${hex(V.bytes[i])}</td><td>${V.bytes[i].length}B${t!==null?' / '+[...t].length+'ch':''}</td><td class="cat">${V.cats[V.cat[i]]}</td></tr>`}).join('')||'<tr><td colspan="5" style="color:var(--muted)">no tokens match</td></tr>';
+  $('#pginfo').textContent=`${ids.length.toLocaleString()} tokens · page ${page+1}/${pages}`;
+  $('#prev').disabled=page===0;$('#next').disabled=page>=pages-1;
+  $('#bars').querySelectorAll('.bar').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.cat===cat)));
+}
+
+/* ---- CJK map ---- */
+const BLOCKS={main:[0x4E00,0x9FFF],exta:[0x3400,0x4DBF]};
+let mapInfo=null, pinned=null;
+function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function buildSets(){
+  if(V.hanSet)return;
+  const han=new Set(), prefixes=new Set();
+  for(let i=0;i<V.bytes.length;i++){
+    const b=V.bytes[i], t=V.text[i];
+    if(t!==null&&[...t].length===1&&b.length===3)han.add(t.codePointAt(0));
+    else if(t===null&&b.length===2&&b[0]>=0xE0&&b[0]<=0xEF&&b[1]>=0x80&&b[1]<=0xBF)prefixes.add((b[0]<<8)|b[1]);
+  }
+  V.hanSet=han; V.prefixSet=prefixes;
+}
+function drawMap(){
+  if(!V||$('#pane-map').hidden)return; buildSets();
+  const [lo,hi]=BLOCKS[$('#blocksel').value]; const cell=+$('#cellsel').value, gap=1, labelW=58, headH=16;
+  const rows=(hi-lo+1)/64; const cv=$('#map'); const dpr=window.devicePixelRatio||1;
+  const W=labelW+64*(cell+gap), H=headH+rows*(cell+gap);
+  cv.width=W*dpr; cv.height=H*dpr; cv.style.width=W+'px'; cv.style.height=H+'px';
+  const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
+  const cAcc=cssVar('--accent'), cLine=cssVar('--line'), cFrag=cssVar('--frag'), cMuted=cssVar('--muted'), cFg=cssVar('--fg');
+  ctx.font=`${Math.min(10,cell)}px ${cssVar('--mono')}`; ctx.fillStyle=cMuted; ctx.textBaseline='middle';
+  if(cell>=14)for(let c=0;c<64;c++){ctx.fillText((0x80+c).toString(16).toUpperCase(),labelW+c*(cell+gap)+1,headH/2);}
+  let covered=0, fragRows=0;
+  for(let r=0;r<rows;r++){
+    const cp0=lo+r*64; const b=encU.encode(String.fromCodePoint(cp0));
+    const pre=(b[0]<<8)|b[1]; const isFrag=V.prefixSet.has(pre); if(isFrag)fragRows++;
+    const y=headH+r*(cell+gap);
+    ctx.font=`${Math.min(10,Math.max(8,cell-2))}px ${cssVar('--mono')}`;
+    ctx.fillStyle=isFrag?cFrag:cMuted; ctx.fillText(hex(b.subarray(0,2)),2,y+cell/2);
+    if(isFrag){ctx.fillStyle=cFrag;ctx.fillRect(labelW-6,y,3,cell);}
+    for(let c=0;c<64;c++){
+      const cp=cp0+c; const whole=V.hanSet.has(cp); if(whole)covered++;
+      ctx.fillStyle=whole?cAcc:cLine; ctx.fillRect(labelW+c*(cell+gap),y,cell,cell);
+      if(cell>=22){ctx.fillStyle=whole?'#fff':cFg;ctx.font=`${cell-7}px ${cssVar('--cjk')}`;ctx.textAlign='center';ctx.fillText(String.fromCodePoint(cp),labelW+c*(cell+gap)+cell/2,y+cell/2+1);ctx.textAlign='left';}
+    }
+  }
+  const total=hi-lo+1;
+  $('#mapstats').innerHTML=`<span><b>${covered.toLocaleString()}</b> / ${total.toLocaleString()} characters are whole tokens (${(100*covered/total).toFixed(1)}%)</span><span><b>${fragRows}</b> / ${rows} row prefixes exist as fragment tokens</span>`;
+  mapInfo={lo,cell,gap,labelW,headH,rows};
+}
+function cellAt(ev){
+  if(!mapInfo)return null; const r=$('#map').getBoundingClientRect(); const x=ev.clientX-r.left-mapInfo.labelW, y=ev.clientY-r.top-mapInfo.headH;
+  if(x<0||y<0)return null; const c=Math.floor(x/(mapInfo.cell+mapInfo.gap)), row=Math.floor(y/(mapInfo.cell+mapInfo.gap));
+  if(c<0||c>63||row<0||row>=mapInfo.rows)return null; return mapInfo.lo+row*64+c;
+}
+function showDetail(cp){
+  const ch=String.fromCodePoint(cp), b=encU.encode(ch), whole=V.hanSet.has(cp);
+  const ids=encode(ch);
+  const split=ids.map(id=>{const t=V.text[id];return `<span class="${t===null?'frag':''}">${t===null?hex(V.bytes[id]):t}<small style="opacity:.7"> #${id}</small></span>`}).join('');
+  $('#detail').innerHTML=`<div class="big">${ch}</div><dl><dt>code point</dt><dd>U+${cp.toString(16).toUpperCase()}</dd><dt>UTF-8</dt><dd>${hex(b)}</dd><dt>UTF-16</dt><dd>${cp.toString(16).toUpperCase().padStart(4,'0').replace(/(..)(..)/,'$1 $2')}</dd><dt>status</dt><dd style="color:${whole?'var(--accent)':'var(--frag)'}">${whole?'whole token':'split into '+ids.length+' tokens'}</dd><dt>encoding</dt><dd class="split">${split}</dd><dt>prefix</dt><dd>${hex(b.subarray(0,2))} ${V.prefixSet.has((b[0]<<8)|b[1])?'is a fragment token':'is not a token'}</dd></dl>${pinned!==null?'<p class="sub" style="font-family:var(--sans)">pinned · click again to unpin</p>':''}`;
+}
+$('#map').addEventListener('mousemove',ev=>{if(pinned!==null)return;const cp=cellAt(ev);if(cp!==null)showDetail(cp);});
+$('#map').addEventListener('click',ev=>{const cp=cellAt(ev);if(cp===null)return;pinned=(pinned===cp)?null:cp;showDetail(cp);});
+$('#blocksel').addEventListener('change',drawMap);$('#cellsel').addEventListener('change',drawMap);
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',drawMap);
+new MutationObserver(drawMap).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+function showTab(id){
+  const map=id==='map';
+  $('#pane-map').hidden=!map; $('#pane-tok').hidden=map;
+  $('#tab-map').setAttribute('aria-selected',String(map)); $('#tab-tok').setAttribute('aria-selected',String(!map));
+  if(map)drawMap();
+}
+$('#tab-map').onclick=()=>showTab('map'); $('#tab-tok').onclick=()=>showTab('tok');
+if(location.hash==='#map')showTab('map');
+
+async function switchEnc(enc){
+  curEnc=enc; V=await load(enc);
+  document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.enc===enc)));
+  render(); renderBars(); page=0; renderTable(); drawMap();
+}
+$('#input').addEventListener('input',render);
+$('#samples').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$('#input').value=b.dataset.s;render();});
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>switchEnc(b.dataset.enc));
+$('#q').addEventListener('input',()=>{page=0;renderTable();});
+$('#catsel').addEventListener('change',()=>{page=0;renderTable();});
+$('#sort').addEventListener('change',()=>{page=0;renderTable();});
+$('#prev').onclick=()=>{page--;renderTable();};
+$('#next').onclick=()=>{page++;renderTable();};
+switchEnc('cl100k_base').catch(e=>{$('#strip').innerHTML='<span class="loading">could not load vocab: '+e.message+'</span>'});
+})();
+</script>
+</body>
+</html>
