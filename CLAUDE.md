@@ -18,23 +18,27 @@ Byte Pair Lens: a client-side visualiser for byte-level BPE tokenizers (r50k / c
 # run the site (fetch() of the vocab JSON needs http, not file://)
 cd docs && python3 -m http.server 8000
 
-# one-time setup for scripts (gpt-tokenizer bundles the .tiktoken files)
+# one-time setup for scripts (gpt-tokenizer bundles the .tiktoken files; checks need `pip install tokenizers`)
 cd scripts && npm install
 
-# regenerate docs/*.json from the .tiktoken files
+# regenerate the tiktoken vocabs (r50k/cl100k/o200k)
 cd scripts && python3 build_vocab.py node_modules/gpt-tokenizer/data ../docs
+# regenerate the Hugging Face vocabs (all, or name some: llama3.1 qwen3 deepseek-v3 gemma3 mistral-v0.3)
+cd scripts && python3 build_hf_vocab.py [name ...]
 
-# correctness check — must print N/N match for all three encodings, exits 1 on mismatch
-cd scripts && node check_encoder.mjs
+# checks: all must pass before merging; each exits 1 on mismatch
+cd scripts && node check_encoder.mjs      # bpe.js vs tiktoken, 3 tokenizers
+cd scripts && python3 check_hf.py [name]  # bpe.js vs Hugging Face tokenizers, 30 strings each
+cd scripts && python3 check_map.py [name] # bytemap.js vs an independent recount, 15 blocks each
 ```
 
-There is no build step, bundler, linter or test framework. `check_encoder.mjs` is the only test; add new test strings to its `tests` array.
+No bundler, linter or test framework. To test one tokenizer, pass its name. Add test strings to `TESTS` in `check_hf.py` (and `tests` in `check_encoder.mjs`). The emoji block's "assigned" count depends on the Unicode version of the JS engine vs Python; `check_map.py` reports it but doesn't fail on it.
 
 ## Architecture
 
 - `docs/` is the deployable site, served as-is (GitHub Pages from `/docs`). `docs/index.html` is the entire app: HTML + CSS + one IIFE of vanilla JS, no dependencies. Keep it dependency-free.
 - Vocab JSON (`docs/<enc>.json`): `{name, cats, cat, tokens}` where `tokens[i]` is base64 of token id `i`'s raw bytes (rank order = merge order) and `cat[i]` indexes into `cats`. Categories are computed offline by `classify()` in `scripts/build_vocab.py`; the browser does not reclassify, so changing script buckets means regenerating the JSON.
-- Tokenizer engine: `docs/bpe.js` (classic script exposing global `BPE`; also `require`-able from Node). `BPE.load(json)` builds a vocab object with `bytes`, `text`, `encode()`. Two families: `bytelevel` (tiktoken files and HF byte-level BPE; merge rank = token id, verified for every file we ship) and `sp` (SentencePiece-style BPE with byte fallback; merge rank = merges-list order, loaded from a separate `<enc>.merges.json`). The three original tiktoken JSONs have no `kind`/`pre`, so their regexes live in `BPE.TIKTOKEN`. `index.html` holds only UI code; `V` is the loaded vocab and `curEnc` its name.
+- Tokenizer engine: `docs/bpe.js` (classic script exposing global `BPE`; also `require`-able from Node). `BPE.load(json)` builds a vocab object with `bytes`, `text`, `encode()`. Two families: `bytelevel` (tiktoken files and HF byte-level BPE; merge rank = token id, verified for every file we ship) and `sp` (SentencePiece-style BPE with byte fallback; merge rank = merges-list order, loaded from a separate `<enc>.merges.json`). The three original tiktoken JSONs have no `kind`/`pre`, so their regexes live in `BPE.TIKTOKEN`. `docs/bytemap.js` (global `ByteMap`) holds the map's block list and per-block counts, shared with `check_map.py`. `index.html` holds only UI code; `V` is the loaded vocab and `curEnc` its name.
 - CJK map: `BLOCKS` defines code-point ranges; `buildSets()` computes `hanSet` (code points whose 3-byte UTF-8 is a single token) and `prefixSet` (2-byte prefixes that are tokens); `drawMap()` renders to `<canvas>` reading colours via `getComputedStyle`, so it follows the theme. `buildSets()` currently assumes 3-byte characters (`b.length===3`).
 - Theming: CSS custom properties on `:root`, dark mode via `prefers-color-scheme` and `[data-theme]`.
 
