@@ -28,11 +28,8 @@ h2{font-family:var(--mono);font-size:.8rem;text-transform:uppercase;letter-spaci
 p{margin:0;max-width:65ch}
 .sub{color:var(--muted);font-size:.95rem}
 header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap}
-.seg{display:inline-flex;border:1px solid var(--fg);font-family:var(--mono);font-size:.82rem}
-.seg button{background:var(--bg);color:var(--fg);border:0;padding:6px 12px;cursor:pointer}
-.seg button+button{border-left:1px solid var(--fg)}
-.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
-.seg button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+.encpick{display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.encpick select{font-size:.95rem;text-transform:none;letter-spacing:0;padding:8px 12px;border-color:var(--fg);min-width:240px;color:var(--fg)}
 textarea{width:100%;min-height:96px;font:1rem/1.6 var(--cjk),var(--sans);background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:0;padding:12px 14px;resize:vertical}
 textarea:focus{border-color:var(--fg)}
 textarea:focus-visible,input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
@@ -101,10 +98,11 @@ td.cat{font-size:.8rem}
 .mlegend .whole::before{background:var(--whole);border-color:var(--whole)}
 .mlegend .none::before{background:var(--line);border-color:var(--line)}
 .mlegend .fragrow::before{width:3px;background:var(--frag);border-color:var(--frag)}
+.mlegend .empty::before{background:var(--bg);border:1px dashed var(--line)}
 .detail{font-family:var(--mono);font-size:.88rem;display:grid;gap:8px;align-content:start}
 .detail .big{font-family:var(--cjk);font-size:4.5rem;line-height:1;text-align:center;padding:16px 0;border-bottom:1px solid var(--line)}
 .detail dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:0}
-.detail dt{color:var(--muted)}.detail dd{margin:0;word-break:break-all}
+.detail dt{color:var(--muted)}.detail dd{margin:0;overflow-wrap:anywhere}
 .detail .split{display:flex;gap:4px;flex-wrap:wrap}
 .detail .split span{padding:2px 6px;background:var(--tok-1);border:1px solid var(--tok-edge)}
 .detail .split span.frag{background:var(--frag);border-color:var(--frag);color:var(--frag-ink)}
@@ -120,30 +118,44 @@ footer a{color:var(--fg);text-underline-offset:3px}
   <header>
     <div>
       <h1>Byte Pair Lens</h1>
-      <p class="sub">How GPT tokenizers cut text into bytes and merges. Paste anything; byte-fragment tokens are the ones that don't form a whole character.</p>
+      <p class="sub">How LLM tokenizers cut text into bytes and merges. Paste anything; byte-fragment tokens are the ones that don't form a whole character.</p>
     </div>
-    <div class="seg" role="group" aria-label="Tokenizer">
-      <button id="btn-r5" aria-pressed="false" data-enc="r50k_base">r50k · GPT-2/3</button>
-      <button id="btn-cl" aria-pressed="true" data-enc="cl100k_base">cl100k · GPT-4</button>
-      <button id="btn-o2" aria-pressed="false" data-enc="o200k_base">o200k · GPT-4o</button>
-    </div>
+    <label class="encpick"><span>Tokenizer</span>
+      <select id="encsel">
+        <optgroup label="OpenAI (tiktoken)">
+          <option value="r50k_base">r50k · GPT-2/3 · 50k</option>
+          <option value="cl100k_base" selected>cl100k · GPT-4 · 100k</option>
+          <option value="o200k_base">o200k · GPT-4o · 200k</option>
+        </optgroup>
+        <optgroup label="Open models (byte-level BPE)">
+          <option value="llama3.1">Llama 3.1 · 128k</option>
+          <option value="qwen3">Qwen3 · 152k</option>
+          <option value="deepseek-v3">DeepSeek-V3 · 129k</option>
+        </optgroup>
+        <optgroup label="Open models (byte fallback)">
+          <option value="gemma3">Gemma 3 · 262k</option>
+          <option value="mistral-v0.3">Mistral v0.3 · 33k</option>
+        </optgroup>
+      </select>
+    </label>
   </header>
 
   <div class="tabs" role="tablist">
     <button role="tab" id="tab-tok" aria-selected="true" aria-controls="pane-tok">Tokenizer</button>
-    <button role="tab" id="tab-map" aria-selected="false" aria-controls="pane-map">CJK map</button>
+    <button role="tab" id="tab-map" aria-selected="false" aria-controls="pane-map">Byte map</button>
   </div>
 
   <div id="pane-map" role="tabpanel" hidden>
     <section>
-      <h2>Han characters by UTF-8 byte prefix</h2>
-      <p class="sub" style="margin-bottom:10px">Each row is one 2-byte UTF-8 prefix (e.g. <span style="font-family:var(--mono)">E4 B8</span>), each column the third byte 80–BF, so a row holds 64 consecutive code points. A cell is blue when the selected tokenizer has that character as a whole token. Rows with an orange marker are prefixes that exist as a fragment token in the vocab, which is how the uncovered characters in that row get encoded.</p>
+      <h2>Every character by its UTF-8 bytes</h2>
+      <p class="sub" style="margin-bottom:10px">One cell per character. Each row is every UTF-8 byte except the last (e.g. <span style="font-family:var(--mono)">E4 B8</span>); each column is the last byte, 80–BF, so a row holds 64 consecutive code points. The same rule covers 2-, 3- and 4-byte characters. A cell is blue when the selected tokenizer has that character as one whole token; otherwise the character is split into pieces of its bytes. A vermilion marker means the row prefix itself is a fragment token, so the characters in that row that aren't whole tokens cost two tokens instead of one per byte.</p>
       <div class="ctl">
-        <select id="blocksel" aria-label="Unicode block"><option value="main">CJK Unified Ideographs U+4E00–9FFF</option><option value="exta">Extension A U+3400–4DBF</option></select>
+        <select id="blocksel" aria-label="Unicode block"></select>
         <select id="cellsel" aria-label="Cell size"><option value="9">cells 9px</option><option value="14" selected>cells 14px</option><option value="22">cells 22px (show glyphs)</option></select>
       </div>
       <div class="rowstats" id="mapstats"></div>
-      <div class="mlegend"><span class="whole">whole token</span><span class="none">needs byte fragments</span><span class="fragrow">row prefix is a fragment token</span></div>
+      <div class="mlegend"><span class="whole">whole token</span><span class="none">split into byte pieces</span><span class="fragrow">row prefix is a fragment token</span><span class="empty">unassigned / outside block</span></div>
+      <p class="sub" id="mapnote" hidden></p>
       <div class="mapwrap">
         <div class="mapscroll" id="mapscroll"><canvas id="map"></canvas></div>
         <div class="detail" id="detail"><p class="sub">Hover or tap a cell.</p></div>
@@ -197,53 +209,30 @@ footer a{color:var(--fg);text-underline-offset:3px}
   <footer>Byte Pair Lens · vocabularies from <a href="https://github.com/openai/tiktoken">tiktoken</a>; BPE runs client-side and matches the reference encoder.</footer>
 </div>
 
+<script src="bpe.js"></script>
+<script src="bytemap.js"></script>
 <script>
 (function(){
 const $=s=>document.querySelector(s);
-const PAT={
-  r50k_base:/'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/gu,
-  cl100k_base:/(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+/gu,
-  o200k_base:/[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n\/]*|\s*[\r\n]+|\s+(?!\S)|\s+/gu
-};
 const TOKCOL=['t1','t2','t3','t4','t5'];
 const cache={}; let V=null, curEnc='cl100k_base';
-const dec=new TextDecoder('utf-8',{fatal:true});
 const encU=new TextEncoder();
 
-function b64ToBytes(s){const b=atob(s);const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
-function key(bytes,i,j){let s='';for(let k=i;k<j;k++)s+=String.fromCharCode(bytes[k]);return s;}
-function hex(b){return Array.from(b,x=>x.toString(16).toUpperCase().padStart(2,'0')).join(' ');}
+const hex=BPE.hex;
 
 async function load(enc){
   if(cache[enc])return cache[enc];
   $('#strip').innerHTML='<span class="loading">loading '+enc+' vocab…</span>';
-  const r=await fetch(enc+'.json'); const j=await r.json();
-  const bytes=j.tokens.map(b64ToBytes);
-  const ranks=new Map(); bytes.forEach((b,i)=>ranks.set(key(b,0,b.length),i));
-  const text=bytes.map(b=>{try{return dec.decode(b)}catch(e){return null}});
-  cache[enc]={...j,bytes,ranks,text};
-  return cache[enc];
-}
-
-function bpe(bytes){ // merge lowest-rank adjacent pair until none
-  let parts=[];for(let i=0;i<bytes.length;i++)parts.push([i,i+1]);
-  while(parts.length>1){
-    let best=-1,bestRank=Infinity;
-    for(let i=0;i<parts.length-1;i++){const r=V.ranks.get(key(bytes,parts[i][0],parts[i+1][1]));if(r!==undefined&&r<bestRank){bestRank=r;best=i;}}
-    if(best<0)break;
-    parts.splice(best,2,[parts[best][0],parts[best+1][1]]);
+  const r=await fetch(enc+'.json'); if(!r.ok)throw new Error(enc+'.json: HTTP '+r.status);
+  const v=BPE.load(await r.json());
+  if(v.kind==='sp'){ // merges are only needed to encode text, so they live in their own file
+    const m=await fetch(enc+'.merges.json'); if(!m.ok)throw new Error(enc+'.merges.json: HTTP '+m.status);
+    v.setMerges(await m.json());
   }
-  return parts.map(([a,b])=>V.ranks.get(key(bytes,a,b)));
+  cache[enc]=v;
+  return v;
 }
-function encode(str){
-  const ids=[];
-  for(const m of str.matchAll(PAT[curEnc])){
-    const b=encU.encode(m[0]);
-    const direct=V.ranks.get(key(b,0,b.length));
-    if(direct!==undefined)ids.push(direct); else ids.push(...bpe(b));
-  }
-  return ids;
-}
+const encode=str=>V.encode(str);
 
 function render(){
   if(!V)return;
@@ -296,88 +285,110 @@ function renderTable(){
   $('#bars').querySelectorAll('.bar').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.cat===cat)));
 }
 
-/* ---- CJK map ---- */
-const BLOCKS={main:[0x4E00,0x9FFF],exta:[0x3400,0x4DBF]};
+/* ---- Byte map ----
+   Row = every UTF-8 byte of a character except the last; column = the last byte (80–BF).
+   For multi-byte characters that is exactly cp>>6 (row) and cp&63 (column), for any length. */
+const BLOCKS=ByteMap.BLOCKS, BLOCK=ByteMap.BLOCK, vocabKeys=()=>ByteMap.vocabKeys(V), rowPrefix=ByteMap.rowPrefix, isTextToken=ByteMap.isTextToken, blockData=blk=>ByteMap.blockData(V,blk);
+(function fillBlocks(){
+  const groups=[...new Set(BLOCKS.map(b=>b.group))];
+  $('#blocksel').innerHTML=groups.map(g=>`<optgroup label="${g}">`+BLOCKS.filter(b=>b.group===g).map(b=>`<option value="${b.id}"${b.id==='han'?' selected':''}>${b.name} · U+${b.lo.toString(16).toUpperCase().padStart(4,'0')}–${b.hi.toString(16).toUpperCase()}</option>`).join('')+'</optgroup>').join('');
+})();
 let mapInfo=null, pinned=null;
 function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
-function buildSets(){
-  if(V.hanSet)return;
-  const han=new Set(), prefixes=new Set();
-  for(let i=0;i<V.bytes.length;i++){
-    const b=V.bytes[i], t=V.text[i];
-    if(t!==null&&[...t].length===1&&b.length===3)han.add(t.codePointAt(0));
-    else if(t===null&&b.length===2&&b[0]>=0xE0&&b[0]<=0xEF&&b[1]>=0x80&&b[1]<=0xBF)prefixes.add((b[0]<<8)|b[1]);
-  }
-  V.hanSet=han; V.prefixSet=prefixes;
-}
 function drawMap(){
-  if(!V||$('#pane-map').hidden)return; buildSets();
-  const [lo,hi]=BLOCKS[$('#blocksel').value]; const cell=+$('#cellsel').value, gap=1, labelW=58, headH=16;
-  const rows=(hi-lo+1)/64; const cv=$('#map'); const dpr=window.devicePixelRatio||1;
-  const W=labelW+64*(cell+gap), H=headH+rows*(cell+gap);
-  cv.width=W*dpr; cv.height=H*dpr; cv.style.width=W+'px'; cv.style.height=H+'px';
+  if(!V||$('#pane-map').hidden)return;
+  const blk=BLOCK[$('#blocksel').value]; const D=blockData(blk);
+  const cell=+$('#cellsel').value, gap=1, labelW=78, headH=16;
+  const cv=$('#map');
+  const W=labelW+64*(cell+gap), H=headH+D.rows*(cell+gap);
+  const dpr=Math.min(window.devicePixelRatio||1, Math.sqrt(16e6/(W*H))); // Safari caps canvas area near 16 Mpx
+  cv.width=Math.floor(W*dpr); cv.height=Math.floor(H*dpr); cv.style.width=W+'px'; cv.style.height=H+'px';
   const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
-  const cFg=cssVar('--fg'), cLine=cssVar('--line'), cMuted=cssVar('--muted'), cBg=cssVar('--bg'), cAcc=cssVar('--whole'), cFrag=cssVar('--frag');
-  ctx.font=`${Math.min(10,cell)}px ${cssVar('--mono')}`; ctx.fillStyle=cMuted; ctx.textBaseline='middle';
-  if(cell>=14)for(let c=0;c<64;c++){ctx.fillText((0x80+c).toString(16).toUpperCase(),labelW+c*(cell+gap)+1,headH/2);}
-  let covered=0, fragRows=0;
-  for(let r=0;r<rows;r++){
-    const cp0=lo+r*64; const b=encU.encode(String.fromCodePoint(cp0));
-    const pre=(b[0]<<8)|b[1]; const isFrag=V.prefixSet.has(pre); if(isFrag)fragRows++;
-    const y=headH+r*(cell+gap);
-    ctx.font=`${Math.min(10,Math.max(8,cell-2))}px ${cssVar('--mono')}`;
-    ctx.fillStyle=isFrag?cFrag:cMuted; ctx.fillText(hex(b.subarray(0,2)),2,y+cell/2);
-    if(isFrag){ctx.fillStyle=cFrag;ctx.fillRect(labelW-6,y,3,cell);}
+  const cFg=cssVar('--fg'), cLine=cssVar('--line'), cMuted=cssVar('--muted'), cBg=cssVar('--bg'), cAcc=cssVar('--whole'), cFrag=cssVar('--frag'), mono=cssVar('--mono');
+  ctx.fillStyle=cBg; ctx.fillRect(0,0,W,H);
+  ctx.font=`${Math.min(10,cell)}px ${mono}`; ctx.fillStyle=cMuted; ctx.textBaseline='middle';
+  const multi=blk.lo>=0x80;
+  if(cell>=14)for(let c=0;c<64;c++){ctx.fillText((multi?0x80+c:c).toString(16).toUpperCase().padStart(2,'0'),labelW+c*(cell+gap)+1,headH/2);}
+  for(let r=0;r<D.rows;r++){
+    const y=headH+r*(cell+gap), pre=rowPrefix((D.r0+r)<<6);
+    ctx.font=`${Math.min(10,Math.max(8,cell-2))}px ${mono}`;
+    ctx.fillStyle=D.fragRow[r]?cFrag:cMuted; ctx.fillText(multi?hex(pre):'U+'+((D.r0+r)<<6).toString(16).toUpperCase().padStart(4,'0'),2,y+cell/2);
+    if(D.fragRow[r]){ctx.fillStyle=cFrag;ctx.fillRect(labelW-6,y,3,cell);}
     for(let c=0;c<64;c++){
-      const cp=cp0+c; const whole=V.hanSet.has(cp); if(whole)covered++;
-      ctx.fillStyle=whole?cAcc:cLine; ctx.fillRect(labelW+c*(cell+gap),y,cell,cell);
-      if(cell>=22){ctx.fillStyle=whole?cBg:cFg;ctx.font=`${cell-7}px ${cssVar('--cjk')}`;ctx.textAlign='center';ctx.fillText(String.fromCodePoint(cp),labelW+c*(cell+gap)+cell/2,y+cell/2+1);ctx.textAlign='left';}
+      const i=r*64+c, st=D.state[i], x=labelW+c*(cell+gap);
+      if(!st){ctx.strokeStyle=cLine;ctx.setLineDash([2,2]);ctx.strokeRect(x+.5,y+.5,cell-1,cell-1);ctx.setLineDash([]);continue;}
+      ctx.fillStyle=st===1?cAcc:cLine; ctx.fillRect(x,y,cell,cell);
+      if(cell>=22){const cp=((D.r0+r)<<6)|c;ctx.fillStyle=st===1?cBg:cFg;ctx.font=`${cell-7}px ${cssVar('--cjk')}`;ctx.textAlign='center';ctx.fillText(String.fromCodePoint(cp),x+cell/2,y+cell/2+1);ctx.textAlign='left';}
     }
   }
-  const total=hi-lo+1;
-  $('#mapstats').innerHTML=`<span><b>${covered.toLocaleString()}</b> / ${total.toLocaleString()} characters are whole tokens (${(100*covered/total).toFixed(1)}%)</span><span><b>${fragRows}</b> / ${rows} row prefixes exist as fragment tokens</span>`;
-  mapInfo={lo,cell,gap,labelW,headH,rows};
+  const pct=D.assigned?(100*D.whole/D.assigned).toFixed(1):'0';
+  $('#mapstats').innerHTML=`<span><b>${D.whole.toLocaleString()}</b> / ${D.assigned.toLocaleString()} assigned characters are whole tokens (${pct}%)</span><span><b>${(D.tok/Math.max(1,D.assigned)).toFixed(2)}</b> tokens per character on average</span>`+(D.prefixable?`<span><b>${D.prefixRows}</b> / ${D.prefixable} row prefixes are fragment tokens</span>`:'');
+  const note=$('#mapnote');
+  if(V.kind==='sp'){note.hidden=false;note.textContent=`${V.label||V.name} uses byte fallback: a character that isn't in the vocabulary becomes one <0xNN> token per byte. Its vocabulary has no multi-byte fragment tokens, so no row is marked.`;}
+  else if(!multi){note.hidden=false;note.textContent='ASCII characters are one byte each, so every one of them is in a byte-level vocabulary.';}
+  else note.hidden=true;
+  mapInfo={blk,D,cell,gap,labelW,headH};
 }
 function cellAt(ev){
-  if(!mapInfo)return null; const r=$('#map').getBoundingClientRect(); const x=ev.clientX-r.left-mapInfo.labelW, y=ev.clientY-r.top-mapInfo.headH;
-  if(x<0||y<0)return null; const c=Math.floor(x/(mapInfo.cell+mapInfo.gap)), row=Math.floor(y/(mapInfo.cell+mapInfo.gap));
-  if(c<0||c>63||row<0||row>=mapInfo.rows)return null; return mapInfo.lo+row*64+c;
+  if(!mapInfo)return null; const {D,cell,gap,labelW,headH,blk}=mapInfo;
+  const r=$('#map').getBoundingClientRect(); const x=ev.clientX-r.left-labelW, y=ev.clientY-r.top-headH;
+  if(x<0||y<0)return null; const c=Math.floor(x/(cell+gap)), row=Math.floor(y/(cell+gap));
+  if(c<0||c>63||row<0||row>=D.rows||!D.state[row*64+c])return null; return ((D.r0+row)<<6)|c;
+}
+function utf16(cp){const s=String.fromCodePoint(cp);return Array.from({length:s.length},(_,i)=>s.charCodeAt(i).toString(16).toUpperCase().padStart(4,'0')).join(' ');}
+function leadRange(b){ // which code points share this lead byte
+  // the lowest code points of each length use fewer bytes, so E0 starts at U+0800 and F0 at U+10000
+  if(b>=0xF0){const lo=(b&7)<<18;return [Math.max(lo,0x10000),lo+0x3FFFF];}
+  if(b>=0xE0){const lo=(b&15)<<12;return [Math.max(lo,0x800),lo+0xFFF];}
+  const lo=(b&31)<<6;return [Math.max(lo,0x80),lo+63];
 }
 function showDetail(cp){
-  const ch=String.fromCodePoint(cp), b=encU.encode(ch), whole=V.hanSet.has(cp);
-  const ids=encode(ch);
+  const ch=String.fromCodePoint(cp), b=encU.encode(ch);
+  const ids=V.splitChar(ch), whole=ids.length===1&&V.bytes[ids[0]].length===b.length;
   const split=ids.map(id=>{const t=V.text[id];return `<span class="${t===null?'frag':''}">${t===null?hex(V.bytes[id]):t}<small style="opacity:.7"> #${id}</small></span>`}).join('');
-  $('#detail').innerHTML=`<div class="big">${ch}</div><dl><dt>code point</dt><dd>U+${cp.toString(16).toUpperCase()}</dd><dt>UTF-8</dt><dd>${hex(b)}</dd><dt>UTF-16</dt><dd>${cp.toString(16).toUpperCase().padStart(4,'0').replace(/(..)(..)/,'$1 $2')}</dd><dt>status</dt><dd>${whole?'whole token':'<span class="inv">split into '+ids.length+' tokens</span>'}</dd><dt>encoding</dt><dd class="split">${split}</dd><dt>prefix</dt><dd>${hex(b.subarray(0,2))} ${V.prefixSet.has((b[0]<<8)|b[1])?'is a fragment token':'is not a token'}</dd></dl>${pinned!==null?'<p class="sub" style="font-family:var(--sans)">pinned · click again to unpin</p>':''}`;
+  const pre=b.subarray(0,b.length-1), pk=BPE.key(pre,0,pre.length);
+  let prefixLine='';
+  if(pre.length>=2)prefixLine=`<dt>prefix</dt><dd>${hex(pre)} ${vocabKeys().has(pk)&&!isTextToken(pk)?'is a fragment token':'is not a token'}</dd>`;
+  let leadNote='';
+  const first=V.bytes[ids[0]];
+  if(!whole&&first.length===1&&first[0]>=0xC0){const [lo,hi]=leadRange(first[0]);leadNote=`<p class="sub" style="font-family:var(--sans)">The first token is the bare lead byte <b>${hex(first)}</b>, which every character from U+${lo.toString(16).toUpperCase().padStart(4,'0')} to U+${hi.toString(16).toUpperCase()} starts with, so it doesn't tell the model which script this is.</p>`;}
+  $('#detail').innerHTML=`<div class="big">${ch}</div><dl><dt>code point</dt><dd>U+${cp.toString(16).toUpperCase().padStart(4,'0')}</dd><dt>UTF-8</dt><dd>${hex(b)} (${b.length} byte${b.length>1?'s':''})</dd><dt>UTF-16</dt><dd>${utf16(cp)}</dd><dt>status</dt><dd>${whole?'whole token':'<span class="inv">split into '+ids.length+' tokens</span>'}</dd><dt>encoding</dt><dd class="split">${split}</dd>${prefixLine}</dl>${leadNote}${pinned!==null?'<p class="sub" style="font-family:var(--sans)">pinned · click again to unpin</p>':''}`;
 }
 $('#map').addEventListener('mousemove',ev=>{if(pinned!==null)return;const cp=cellAt(ev);if(cp!==null)showDetail(cp);});
-$('#map').addEventListener('click',ev=>{const cp=cellAt(ev);if(cp===null)return;pinned=(pinned===cp)?null:cp;showDetail(cp);});
-$('#blocksel').addEventListener('change',drawMap);$('#cellsel').addEventListener('change',drawMap);
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',drawMap);
-new MutationObserver(drawMap).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+$('#map').addEventListener('click',ev=>{const cp=cellAt(ev);if(cp===null)return;pinned=(pinned===cp)?null:cp;showDetail(cp);writeHash();});
+$('#blocksel').addEventListener('change',()=>{pinned=null;$('#detail').innerHTML='<p class="sub">Hover or tap a cell.</p>';drawMap();writeHash();});
+$('#cellsel').addEventListener('change',drawMap);
 
 function showTab(id){
   const map=id==='map';
   $('#pane-map').hidden=!map; $('#pane-tok').hidden=map;
   $('#tab-map').setAttribute('aria-selected',String(map)); $('#tab-tok').setAttribute('aria-selected',String(!map));
   if(map)drawMap();
+  if(V)writeHash();
 }
 $('#tab-map').onclick=()=>showTab('map'); $('#tab-tok').onclick=()=>showTab('tok');
-if(location.hash==='#map')showTab('map');
+{const h=readHash(); if(h.block&&BLOCK[h.block])$('#blocksel').value=h.block; if(h.cp&&/^[0-9A-F]+$/i.test(h.cp))pinned=parseInt(h.cp,16); if(h.tab==='map')$('#pane-map').hidden=false,$('#pane-tok').hidden=true,$('#tab-map').setAttribute('aria-selected','true'),$('#tab-tok').setAttribute('aria-selected','false');}
 
+// URL state: #enc=qwen3&tab=map (a bare #map still opens the map)
+function readHash(){const h={};for(const kv of location.hash.slice(1).split('&')){if(!kv)continue;const [k,v]=kv.split('=');h[k]=v===undefined?'':decodeURIComponent(v);}if('map' in h)h.tab='map';return h;}
+function writeHash(){const map=!$('#pane-map').hidden;let h='#enc='+curEnc;if(map){h+='&tab=map&block='+$('#blocksel').value;if(pinned!==null)h+='&cp='+pinned.toString(16).toUpperCase();}history.replaceState(null,'','#'+h.slice(1));}
 async function switchEnc(enc){
-  curEnc=enc; V=await load(enc);
-  document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.enc===enc)));
-  render(); renderBars(); page=0; renderTable(); drawMap();
+  $('#encsel').value=enc; $('#encsel').disabled=true;
+  try{ V=await load(enc); curEnc=enc; }
+  finally{ $('#encsel').disabled=false; }
+  $('#encsel').value=curEnc;
+  render(); renderBars(); page=0; renderTable(); drawMap(); if(pinned!==null&&!$('#pane-map').hidden)showDetail(pinned); writeHash();
 }
 $('#input').addEventListener('input',render);
 $('#samples').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$('#input').value=b.dataset.s;render();});
-document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>switchEnc(b.dataset.enc));
+$('#encsel').addEventListener('change',e=>switchEnc(e.target.value).catch(err=>{$('#strip').innerHTML='<span class="loading">could not load vocab: '+err.message+'</span>'}));
 $('#q').addEventListener('input',()=>{page=0;renderTable();});
 $('#catsel').addEventListener('change',()=>{page=0;renderTable();});
 $('#sort').addEventListener('change',()=>{page=0;renderTable();});
 $('#prev').onclick=()=>{page--;renderTable();};
 $('#next').onclick=()=>{page++;renderTable();};
-switchEnc('cl100k_base').catch(e=>{$('#strip').innerHTML='<span class="loading">could not load vocab: '+e.message+'</span>'});
+const H=readHash(); const startEnc=[...$('#encsel').options].some(o=>o.value===H.enc)?H.enc:'cl100k_base';
+switchEnc(startEnc).catch(e=>{$('#strip').innerHTML='<span class="loading">could not load vocab: '+e.message+'</span>'});
 })();
 </script>
 </body>
