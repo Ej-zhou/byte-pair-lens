@@ -77,4 +77,5 @@ Code: MIT. The vocabulary files keep their own licences; copies and the required
 - Gemma 3: Gemma Terms of Use, including the use restrictions in Section 3.2
 - DeepSeek-V3: DeepSeek License Agreement, including the use-based restrictions in Attachment A
 - Qwen3, Mistral 7B v0.3: Apache-2.0
+- Logos in `docs/logos.js`: Meta, Qwen, DeepSeek, Google and Mistral AI marks from [Simple Icons](https://simpleicons.org) (CC0-1.0); the marks belong to their owners and only identify each tokenizer.
 - r50k_base, cl100k_base, o200k_base: from [tiktoken](https://github.com/openai/tiktoken) (MIT), redistributed via the `gpt-tokenizer` npm package

@@ -28,9 +28,37 @@ h2{font-family:var(--mono);font-size:.8rem;text-transform:uppercase;letter-spaci
 p{margin:0;max-width:65ch}
 .sub{color:var(--muted);font-size:.95rem}
 header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap}
-.encpick{display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
 .loadstatus{min-height:1.2em;text-transform:none;letter-spacing:0;font-size:.78rem;color:var(--muted)}
-.encpick select{font-size:.95rem;text-transform:none;letter-spacing:0;padding:8px 12px;border-color:var(--fg);min-width:min(100%,320px);max-width:100%;color:var(--fg)}
+/* tokenizer picker: a rail of chips, mirrored by a floating dock once the rail scrolls away */
+.picker{display:grid;gap:8px}
+.picklabel{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;font-family:var(--mono);font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.rail,.dockrail{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.chip{display:inline-flex;align-items:center;gap:7px;font:inherit;font-size:.86rem;background:var(--bg);color:var(--fg);border:1px solid var(--line);padding:6px 9px 6px 8px;cursor:pointer;transition:border-color .15s,background .15s}
+.chip:hover{border-color:var(--fg)}
+.chip[aria-checked="true"]{background:var(--fg);border-color:var(--fg);color:var(--bg)}
+.chip .meta{display:none;font-family:var(--mono);font-size:.72rem;color:var(--muted)}
+.chip[aria-checked="true"] .meta{display:inline}
+.chip[aria-checked="true"] .meta{color:var(--bg);opacity:.75}
+.linkbtn{margin-left:auto;font:inherit;text-transform:none;letter-spacing:0;font-size:.8rem;background:none;border:0;border-bottom:1px solid var(--line);color:var(--fg);cursor:pointer;padding:0}
+.linkbtn:hover{border-bottom-color:var(--fg)}
+.gsep{align-self:center;width:1px;height:20px;background:var(--line);margin:0 3px}
+.chip.own{border-style:dashed}
+.chip.busy{animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.45}}
+.logo{width:16px;height:16px;flex:none;fill:currentColor}
+.logo.badge{width:auto;height:auto;font:600 .58rem/1 var(--mono);letter-spacing:.02em;border:1px solid currentColor;padding:2px 3px}
+.dock{position:fixed;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:20;display:flex;align-items:center;gap:6px;max-width:calc(100vw - 2*max(16px,env(safe-area-inset-left,0px)));background:var(--bg);border:1px solid var(--fg);box-shadow:0 6px 24px rgba(17,17,17,.12);padding:6px;transform:translate(-50%,0);transition:transform .25s ease,opacity .25s ease}
+.dock[data-state="hidden"]{transform:translate(-50%,calc(100% + 40px));opacity:0;pointer-events:none}
+.dockrail{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.dockrail .chip{padding:5px 9px 5px 7px;font-size:.82rem;white-space:nowrap}
+.dockrail .chip .meta{display:none}
+.dockbtn,.dockpill{font:inherit;background:var(--bg);color:var(--fg);border:1px solid var(--line);cursor:pointer;padding:5px 9px}
+.dockbtn:hover,.dockpill:hover{border-color:var(--fg)}
+.dockpill{display:none;align-items:center;gap:8px;font-size:.85rem;border:0}
+.dock[data-state="pill"]{padding:4px}
+.dock[data-state="pill"] .dockrail,.dock[data-state="pill"] .dockbtn{display:none}
+.dock[data-state="pill"] .dockpill{display:inline-flex}
+@media (prefers-reduced-motion:reduce){.dock{transition:none}.chip.busy{animation:none}}
 textarea{width:100%;min-height:96px;font:1rem/1.6 var(--cjk),var(--sans);background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:0;padding:12px 14px;resize:vertical}
 textarea:focus{border-color:var(--fg)}
 textarea:focus-visible,input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
@@ -170,8 +198,11 @@ footer a{color:var(--fg);text-underline-offset:3px}
       <h1>Byte Pair Lens</h1>
       <p class="sub">How LLM tokenizers cut text into bytes and merges. Paste anything; byte-fragment tokens are the ones that don't form a whole character.</p>
     </div>
-    <label class="encpick"><span>Tokenizer</span>
-      <select id="encsel">
+  </header>
+  <div class="picker" id="picker">
+    <div class="picklabel"><span>Tokenizer</span><span id="loadstatus" class="loadstatus" aria-live="polite"></span><button class="linkbtn" id="ownbtn" title="Load a Hugging Face tokenizer.json from your computer. It stays in this tab and is never uploaded.">Load your own tokenizer.json ↑</button></div>
+    <div class="rail" id="encrail" role="radiogroup" aria-label="Tokenizer"></div>
+    <select id="encsel" hidden aria-hidden="true" tabindex="-1">
         <optgroup label="OpenAI · byte-level BPE (tiktoken)">
           <option value="r50k_base">GPT-2 / GPT-3 · r50k_base · 50k tokens</option>
           <option value="cl100k_base" selected>GPT-4 / GPT-3.5 · cl100k_base · 100k tokens</option>
@@ -190,10 +221,14 @@ footer a{color:var(--fg);text-underline-offset:3px}
           <option value="__upload">Load a tokenizer.json from your computer…</option>
         </optgroup>
       </select>
-      <span id="loadstatus" class="loadstatus" aria-live="polite"></span>
-      <input type="file" id="ownfile" accept=".json,application/json" hidden>
-    </label>
-  </header>
+    <input type="file" id="ownfile" accept=".json,application/json" hidden>
+  </div>
+  <div class="dock" id="dock" data-state="hidden" aria-label="Tokenizer (floating)">
+    <div class="dockrail" id="dockrail" role="radiogroup" aria-label="Tokenizer"></div>
+    <button class="dockbtn" id="dockhide" aria-label="Hide tokenizer bar" title="Hide">▾</button>
+    <button class="dockpill" id="dockpill" aria-label="Show tokenizer bar" title="Show tokenizers"></button>
+  </div>
+  
 
   <div class="tabs" role="tablist">
     <button role="tab" id="tab-tok" aria-selected="true" aria-controls="pane-tok">Tokenizer</button>
@@ -313,6 +348,7 @@ footer a{color:var(--fg);text-underline-offset:3px}
 
 <script src="bpe.js?v=eafacd255ddf"></script>
 <script src="hfimport.js"></script>
+<script src="logos.js"></script>
 <script src="bytemap.js?v=7bdd791e8f06"></script>
 <script>
 (function(){
@@ -713,6 +749,41 @@ function showTree(id){
 }
 $('#rows').addEventListener('click',e=>{const tr=e.target.closest('tr[data-id]');if(tr)showTree(+tr.dataset.id);});
 
+/* ---- Tokenizer picker: rail + floating dock (the hidden #encsel stays the source of truth) ---- */
+const SHORT={'r50k_base':['GPT-2/3','50k'],'cl100k_base':['GPT-4','100k'],'o200k_base':['GPT-4o','200k'],'llama3.1':['Llama 3.1','128k'],'qwen3':['Qwen3','152k'],'deepseek-v3':['DeepSeek-V3','129k'],'gemma3':['Gemma 3','262k'],'mistral-v0.3':['Mistral v0.3','33k']};
+let busyEnc=null;
+function chipHTML(o,first){
+  const v=o.value;
+  if(v==='__upload')return `<span class="gsep" aria-hidden="true"></span><button class="chip own" data-enc="__upload" title="Load a Hugging Face tokenizer.json from your computer. It stays in this tab and is never uploaded.">${Logos.svg('own:')}<span>Your file</span></button>`;
+  const [nm,size]=SHORT[v]||[o.textContent.split(' · ')[0],o.textContent.split(' · ').pop().replace(' tokens','')];
+  const sep=first?'<span class="gsep" aria-hidden="true"></span>':'';
+  return `${sep}<button class="chip${busyEnc===v?' busy':''}" role="radio" aria-checked="${v===curEnc}" data-enc="${v}" title="${o.textContent}">${Logos.svg(v)}<span>${nm}</span><span class="meta">${size}</span></button>`;
+}
+function renderPickers(){
+  const groups=[...$('#encsel').querySelectorAll('optgroup')];
+  const html=groups.map((g,gi)=>[...g.querySelectorAll('option')].map((o,i)=>chipHTML(o,gi>0&&i===0&&o.value!=='__upload')).join('')).join('');
+  $('#dockrail').innerHTML=html;
+  // the rail leaves out the upload chip: it lives in the label row so all eight tokenizers fit on one line
+  $('#encrail').innerHTML=html.replace(/<span class="gsep" aria-hidden="true"><\/span><button class="chip own"[\s\S]*$/,'');
+  const cur=$('#encsel').selectedOptions[0]; const [nm]=SHORT[curEnc]||[cur?cur.textContent.split(' · ')[0]:curEnc];
+  $('#dockpill').innerHTML=`${Logos.svg(curEnc)}<span>${nm}</span><span aria-hidden="true">▴</span>`;
+}
+function pickEnc(v){
+  if(v==='__upload'){$('#ownfile').click();return;}
+  if(v===curEnc)return;
+  busyEnc=v; renderPickers();
+  switchEnc(v).catch(err=>{$('#loadstatus').textContent='could not load: '+err.message;}).finally(()=>{busyEnc=null;renderPickers();});
+}
+$('#ownbtn').onclick=()=>$('#ownfile').click();
+for(const r of ['#encrail','#dockrail'])$(r).addEventListener('click',e=>{const b=e.target.closest('.chip');if(b)pickEnc(b.dataset.enc);});
+// dock: shown while the rail is off screen; the user can fold it into a pill (remembered per browser)
+let dockFolded=false; try{dockFolded=localStorage.getItem('bpl-dock')==='pill';}catch(e){}
+let railVisible=true;
+function updateDock(){$('#dock').dataset.state=railVisible?'hidden':(dockFolded?'pill':'open');}
+new IntersectionObserver(es=>{railVisible=es[0].isIntersecting;updateDock();},{rootMargin:'-40px 0px 0px 0px'}).observe($('#encrail'));
+$('#dockhide').onclick=()=>{dockFolded=true;try{localStorage.setItem('bpl-dock','pill')}catch(e){};updateDock();};
+$('#dockpill').onclick=()=>{dockFolded=false;try{localStorage.setItem('bpl-dock','open')}catch(e){};updateDock();};
+
 /* ---- Your own tokenizer.json (converted in the browser by hfimport.js) ---- */
 $('#ownfile').addEventListener('change',async e=>{
   const f=e.target.files[0]; e.target.value=''; if(!f)return;
@@ -786,7 +857,7 @@ async function switchEnc(enc){
   try{ V=await load(enc); curEnc=enc; }
   finally{ $('#encsel').disabled=false; }
   $('#encsel').value=curEnc;
-  render(); renderBars(); page=0; renderTable(); $('#tree').hidden=true; drawMap(); if(pinned!==null&&!$('#pane-map').hidden)showDetail(pinned); if(!$('#pane-cov').hidden)renderCoverage(); writeHash();
+  renderPickers(); render(); renderBars(); page=0; renderTable(); $('#tree').hidden=true; drawMap(); if(pinned!==null&&!$('#pane-map').hidden)showDetail(pinned); if(!$('#pane-cov').hidden)renderCoverage(); writeHash();
 }
 $('#input').addEventListener('input',render);
 $('#samples').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$('#input').value=b.dataset.s;render();});
@@ -796,6 +867,7 @@ $('#catsel').addEventListener('change',()=>{page=0;renderTable();});
 $('#sort').addEventListener('change',()=>{page=0;renderTable();});
 $('#prev').onclick=()=>{page--;renderTable();};
 $('#next').onclick=()=>{page++;renderTable();};
+renderPickers();
 const H=readHash(); const startEnc=[...$('#encsel').options].some(o=>o.value===H.enc)?H.enc:'cl100k_base';
 switchEnc(startEnc).catch(e=>{$('#strip').innerHTML='<span class="loading">could not load vocab: '+e.message+'</span>'});
 })();
