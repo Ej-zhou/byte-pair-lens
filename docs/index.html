@@ -28,11 +28,8 @@ h2{font-family:var(--mono);font-size:.8rem;text-transform:uppercase;letter-spaci
 p{margin:0;max-width:65ch}
 .sub{color:var(--muted);font-size:.95rem}
 header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap}
-.seg{display:inline-flex;border:1px solid var(--fg);font-family:var(--mono);font-size:.82rem}
-.seg button{background:var(--bg);color:var(--fg);border:0;padding:6px 12px;cursor:pointer}
-.seg button+button{border-left:1px solid var(--fg)}
-.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
-.seg button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+.encpick{display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.encpick select{font-size:.95rem;text-transform:none;letter-spacing:0;padding:8px 12px;border-color:var(--fg);min-width:240px;color:var(--fg)}
 textarea{width:100%;min-height:96px;font:1rem/1.6 var(--cjk),var(--sans);background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:0;padding:12px 14px;resize:vertical}
 textarea:focus{border-color:var(--fg)}
 textarea:focus-visible,input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
@@ -120,13 +117,26 @@ footer a{color:var(--fg);text-underline-offset:3px}
   <header>
     <div>
       <h1>Byte Pair Lens</h1>
-      <p class="sub">How GPT tokenizers cut text into bytes and merges. Paste anything; byte-fragment tokens are the ones that don't form a whole character.</p>
+      <p class="sub">How LLM tokenizers cut text into bytes and merges. Paste anything; byte-fragment tokens are the ones that don't form a whole character.</p>
     </div>
-    <div class="seg" role="group" aria-label="Tokenizer">
-      <button id="btn-r5" aria-pressed="false" data-enc="r50k_base">r50k · GPT-2/3</button>
-      <button id="btn-cl" aria-pressed="true" data-enc="cl100k_base">cl100k · GPT-4</button>
-      <button id="btn-o2" aria-pressed="false" data-enc="o200k_base">o200k · GPT-4o</button>
-    </div>
+    <label class="encpick"><span>Tokenizer</span>
+      <select id="encsel">
+        <optgroup label="OpenAI (tiktoken)">
+          <option value="r50k_base">r50k · GPT-2/3 · 50k</option>
+          <option value="cl100k_base" selected>cl100k · GPT-4 · 100k</option>
+          <option value="o200k_base">o200k · GPT-4o · 200k</option>
+        </optgroup>
+        <optgroup label="Open models (byte-level BPE)">
+          <option value="llama3.1">Llama 3.1 · 128k</option>
+          <option value="qwen3">Qwen3 · 152k</option>
+          <option value="deepseek-v3">DeepSeek-V3 · 129k</option>
+        </optgroup>
+        <optgroup label="Open models (byte fallback)">
+          <option value="gemma3">Gemma 3 · 262k</option>
+          <option value="mistral-v0.3">Mistral v0.3 · 33k</option>
+        </optgroup>
+      </select>
+    </label>
   </header>
 
   <div class="tabs" role="tablist">
@@ -336,24 +346,31 @@ function showTab(id){
   $('#pane-map').hidden=!map; $('#pane-tok').hidden=map;
   $('#tab-map').setAttribute('aria-selected',String(map)); $('#tab-tok').setAttribute('aria-selected',String(!map));
   if(map)drawMap();
+  if(V)writeHash();
 }
 $('#tab-map').onclick=()=>showTab('map'); $('#tab-tok').onclick=()=>showTab('tok');
-if(location.hash==='#map')showTab('map');
+if(readHash().tab==='map')showTab('map');
 
+// URL state: #enc=qwen3&tab=map (a bare #map still opens the map)
+function readHash(){const h={};for(const kv of location.hash.slice(1).split('&')){if(!kv)continue;const [k,v]=kv.split('=');h[k]=v===undefined?'':decodeURIComponent(v);}if('map' in h)h.tab='map';return h;}
+function writeHash(){const tab=$('#pane-map').hidden?'':'&tab=map';history.replaceState(null,'','#enc='+curEnc+tab);}
 async function switchEnc(enc){
-  curEnc=enc; V=await load(enc);
-  document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.enc===enc)));
-  render(); renderBars(); page=0; renderTable(); drawMap();
+  $('#encsel').value=enc; $('#encsel').disabled=true;
+  try{ V=await load(enc); curEnc=enc; }
+  finally{ $('#encsel').disabled=false; }
+  $('#encsel').value=curEnc;
+  render(); renderBars(); page=0; renderTable(); drawMap(); writeHash();
 }
 $('#input').addEventListener('input',render);
 $('#samples').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$('#input').value=b.dataset.s;render();});
-document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>switchEnc(b.dataset.enc));
+$('#encsel').addEventListener('change',e=>switchEnc(e.target.value).catch(err=>{$('#strip').innerHTML='<span class="loading">could not load vocab: '+err.message+'</span>'}));
 $('#q').addEventListener('input',()=>{page=0;renderTable();});
 $('#catsel').addEventListener('change',()=>{page=0;renderTable();});
 $('#sort').addEventListener('change',()=>{page=0;renderTable();});
 $('#prev').onclick=()=>{page--;renderTable();};
 $('#next').onclick=()=>{page++;renderTable();};
-switchEnc('cl100k_base').catch(e=>{$('#strip').innerHTML='<span class="loading">could not load vocab: '+e.message+'</span>'});
+const H=readHash(); const startEnc=[...$('#encsel').options].some(o=>o.value===H.enc)?H.enc:'cl100k_base';
+switchEnc(startEnc).catch(e=>{$('#strip').innerHTML='<span class="loading">could not load vocab: '+e.message+'</span>'});
 })();
 </script>
 </body>
