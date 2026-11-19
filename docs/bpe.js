@@ -17,7 +17,7 @@
   };
 
   const utf8 = new TextEncoder();
-  const strict = new TextDecoder('utf-8', { fatal: true });
+  const strict = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }) // ignoreBOM: keep a leading U+FEFF, some tokens start with one;
 
   function b64ToBytes(s) {
     const b = atob(s);

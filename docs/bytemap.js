@@ -7,7 +7,7 @@
   'use strict';
   const BPE = root.BPE || require('./bpe.js');
   const utf8 = new TextEncoder();
-  const strict = new TextDecoder('utf-8', { fatal: true });
+  const strict = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }) // ignoreBOM: keep a leading U+FEFF, some tokens start with one;
 
   // Featured scripts: the blocks the paper talks about, with the languages that use them.
   const FEATURED = [

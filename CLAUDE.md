@@ -29,6 +29,7 @@ cd scripts && python3 build_hf_vocab.py [name ...]
 # checks: all must pass before merging; each exits 1 on mismatch
 cd scripts && node check_encoder.mjs      # bpe.js vs tiktoken, 3 tokenizers
 cd scripts && python3 check_hf.py [name]  # bpe.js vs Hugging Face tokenizers, 30 strings each
+cd scripts && node check_import.cjs        # hfimport.js (browser upload) == the Python build, all 5 HF vocabs
 cd scripts && python3 check_map.py [name] # bytemap.js vs an independent recount: 15 blocks, whole-Unicode overview, coverage.json
 
 # Coverage tab data (rerun after changing vocabs or freq.json)
@@ -52,6 +53,8 @@ No bundler, linter or test framework. To test one tokenizer, pass its name. Add 
 
 ## Gotchas
 
+- `docs/hfimport.js` (global `HFImport`) converts a user's tokenizer.json in the browser; it is a port of `build_hf_vocab.py` + `build_vocab.classify`, so change both together (check_import.cjs catches drift).
+- Decode token bytes with `TextDecoder(..., {ignoreBOM: true})`: some tokens start with U+FEFF and the default silently drops it.
 - Data loading: the page fetches every data file as `name?v=<hash from manifest.json>` and keeps it in Cache Storage (`bpl-data-v1`), so a stale manifest means users keep old data. Rerun `build_manifest.py` after rebuilding data or editing `bpe.js`/`bytemap.js`.
 - Both checks import `docs/bpe.js` directly, so they test the code the page runs. Change tokenisation only in `bpe.js`.
 - The tool's credibility rests on the browser tokenizer being byte-identical to the reference; keep `check_encoder.mjs` passing and extend it when adding tokenizers.

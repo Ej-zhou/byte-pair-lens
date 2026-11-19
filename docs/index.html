@@ -171,8 +171,12 @@ footer a{color:var(--fg);text-underline-offset:3px}
           <option value="gemma3">Gemma 3 (Google) · 262k tokens</option>
           <option value="mistral-v0.3">Mistral 7B v0.3 · 33k tokens</option>
         </optgroup>
+        <optgroup label="Your own" id="owngroup">
+          <option value="__upload">Load a tokenizer.json from your computer…</option>
+        </optgroup>
       </select>
       <span id="loadstatus" class="loadstatus" aria-live="polite"></span>
+      <input type="file" id="ownfile" accept=".json,application/json" hidden>
     </label>
   </header>
 
@@ -290,8 +294,9 @@ footer a{color:var(--fg);text-underline-offset:3px}
   <footer>Byte Pair Lens · tokenizers run in your browser and match their reference encoders · <b>Built with Llama</b> · Vocabularies: OpenAI tiktoken (MIT); Qwen3, Mistral (Apache-2.0); Llama 3.1, Gemma 3 and DeepSeek-V3 under their own licences, with their use restrictions: see the <a href="licenses/NOTICE.txt">notice and licences</a>.</footer>
 </div>
 
-<script src="bpe.js?v=207a23d25e02"></script>
-<script src="bytemap.js?v=a935f43320fe"></script>
+<script src="bpe.js?v=aacf01a153ac"></script>
+<script src="hfimport.js"></script>
+<script src="bytemap.js?v=7bdd791e8f06"></script>
 <script>
 (function(){
 const $=s=>document.querySelector(s);
@@ -673,9 +678,29 @@ $('#covscript').addEventListener('change',e=>{covScript=e.target.value;renderCov
 $('#covcsv').addEventListener('click',async()=>{const a=document.createElement('a');a.href=await dataURL('coverage.csv');a.download='byte-pair-lens-coverage.csv';document.body.append(a);a.click();a.remove();});
 window.addEventListener('resize',()=>{if(!$('#pane-cov').hidden&&COV&&FREQ.scripts[covScript])drawCovChart(ByteMap.coverage(V,ByteMap.BLOCK[covScript],FREQ.scripts[covScript]),FREQ.scripts[covScript]);});
 
+/* ---- Your own tokenizer.json (converted in the browser by hfimport.js) ---- */
+$('#ownfile').addEventListener('change',async e=>{
+  const f=e.target.files[0]; e.target.value=''; if(!f)return;
+  const st=$('#loadstatus'); st.textContent=`Reading ${f.name} (${mb(f.size)})…`;
+  await new Promise(r=>setTimeout(r));
+  try{
+    const j=JSON.parse(await f.text());
+    const name='own:'+f.name.replace(/\.json$/i,''), label=f.name.replace(/\.json$/i,'');
+    const {vocab,merges}=HFImport.convert(j,name,label+' (your file)');
+    const v=BPE.load(vocab); if(merges)v.setMerges(merges);
+    cache[name]=Promise.resolve(v);
+    if(![...$('#encsel').options].some(o=>o.value===name)){
+      const o=document.createElement('option'); o.value=name; o.textContent=`${label} (your file) · ${Math.round(v.bytes.length/1000)}k tokens`;
+      $('#owngroup').insertBefore(o,$('#owngroup').lastElementChild);
+    }
+    await switchEnc(name);
+    st.textContent=`Loaded ${f.name}: ${v.bytes.length.toLocaleString()} tokens, ${v.kind==='sp'?'BPE with byte fallback':'byte-level BPE'}. It stays in this tab only and is never uploaded.`;
+  }catch(err){st.textContent=(err instanceof SyntaxError?`${f.name} is not valid JSON.`:err.message)+' Supported: Hugging Face tokenizer.json files with a BPE model (byte-level, or byte fallback).';}
+});
+
 /* ---- Compare ---- */
 let cmpSel=['cl100k_base','o200k_base','qwen3','gemma3'], cmpBusy=0;
-function encOptions(){return [...$('#encsel').options].map(o=>({enc:o.value,label:o.textContent.split(' · ')[0]}));}
+function encOptions(){return [...$('#encsel').options].filter(o=>o.value!=='__upload').map(o=>({enc:o.value,label:o.textContent.split(' · ')[0]}));}
 function renderCmpPick(){
   $('#cmppick').innerHTML=encOptions().map(({enc,label})=>{const on=cmpSel.includes(enc);return `<label><input type="checkbox" value="${enc}"${on?' checked':''}${!on&&cmpSel.length>=4?' disabled':''}>${label}</label>`;}).join('');
 }
@@ -730,7 +755,7 @@ async function switchEnc(enc){
 }
 $('#input').addEventListener('input',render);
 $('#samples').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$('#input').value=b.dataset.s;render();});
-$('#encsel').addEventListener('change',e=>switchEnc(e.target.value).catch(err=>{$('#strip').innerHTML='<span class="loading">could not load vocab: '+err.message+'</span>'}));
+$('#encsel').addEventListener('change',e=>{if(e.target.value==='__upload'){e.target.value=curEnc;$('#ownfile').click();return;}switchEnc(e.target.value).catch(err=>{$('#strip').innerHTML='<span class="loading">could not load vocab: '+err.message+'</span>'})});
 $('#q').addEventListener('input',()=>{page=0;renderTable();});
 $('#catsel').addEventListener('change',()=>{page=0;renderTable();});
 $('#sort').addEventListener('change',()=>{page=0;renderTable();});
