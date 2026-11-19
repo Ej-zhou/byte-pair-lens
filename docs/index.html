@@ -29,7 +29,7 @@ p{margin:0;max-width:65ch}
 .sub{color:var(--muted);font-size:.95rem}
 header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap}
 .encpick{display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
-.encpick select{font-size:.95rem;text-transform:none;letter-spacing:0;padding:8px 12px;border-color:var(--fg);min-width:240px;color:var(--fg)}
+.encpick select{font-size:.95rem;text-transform:none;letter-spacing:0;padding:8px 12px;border-color:var(--fg);min-width:min(100%,320px);max-width:100%;color:var(--fg)}
 textarea{width:100%;min-height:96px;font:1rem/1.6 var(--cjk),var(--sans);background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:0;padding:12px 14px;resize:vertical}
 textarea:focus{border-color:var(--fg)}
 textarea:focus-visible,input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
@@ -122,19 +122,19 @@ footer a{color:var(--fg);text-underline-offset:3px}
     </div>
     <label class="encpick"><span>Tokenizer</span>
       <select id="encsel">
-        <optgroup label="OpenAI (tiktoken)">
-          <option value="r50k_base">r50k · GPT-2/3 · 50k</option>
-          <option value="cl100k_base" selected>cl100k · GPT-4 · 100k</option>
-          <option value="o200k_base">o200k · GPT-4o · 200k</option>
+        <optgroup label="OpenAI · byte-level BPE (tiktoken)">
+          <option value="r50k_base">GPT-2 / GPT-3 · r50k_base · 50k tokens</option>
+          <option value="cl100k_base" selected>GPT-4 / GPT-3.5 · cl100k_base · 100k tokens</option>
+          <option value="o200k_base">GPT-4o / o1 · o200k_base · 200k tokens</option>
         </optgroup>
-        <optgroup label="Open models (byte-level BPE)">
-          <option value="llama3.1">Llama 3.1 · 128k</option>
-          <option value="qwen3">Qwen3 · 152k</option>
-          <option value="deepseek-v3">DeepSeek-V3 · 129k</option>
+        <optgroup label="Open models · byte-level BPE">
+          <option value="llama3.1">Llama 3.1 (Meta) · 128k tokens</option>
+          <option value="qwen3">Qwen3 (Alibaba) · 152k tokens</option>
+          <option value="deepseek-v3">DeepSeek-V3 · 129k tokens</option>
         </optgroup>
-        <optgroup label="Open models (byte fallback)">
-          <option value="gemma3">Gemma 3 · 262k</option>
-          <option value="mistral-v0.3">Mistral v0.3 · 33k</option>
+        <optgroup label="Open models · BPE with byte fallback">
+          <option value="gemma3">Gemma 3 (Google) · 262k tokens</option>
+          <option value="mistral-v0.3">Mistral 7B v0.3 · 33k tokens</option>
         </optgroup>
       </select>
     </label>
@@ -150,11 +150,11 @@ footer a{color:var(--fg);text-underline-offset:3px}
       <h2>Every character by its UTF-8 bytes</h2>
       <p class="sub" style="margin-bottom:10px">One cell per character. Each row is every UTF-8 byte except the last (e.g. <span style="font-family:var(--mono)">E4 B8</span>); each column is the last byte, 80–BF, so a row holds 64 consecutive code points. The same rule covers 2-, 3- and 4-byte characters. A cell is blue when the selected tokenizer has that character as one whole token; otherwise the character is split into pieces of its bytes. A vermilion marker means the row prefix itself is a fragment token, so the characters in that row that aren't whole tokens cost two tokens instead of one per byte.</p>
       <div class="ctl">
-        <select id="blocksel" aria-label="Unicode block"></select>
-        <select id="cellsel" aria-label="Cell size"><option value="9">cells 9px</option><option value="14" selected>cells 14px</option><option value="22">cells 22px (show glyphs)</option></select>
+        <select id="blocksel" aria-label="Unicode block" style="max-width:100%"></select>
+        <select id="cellsel" aria-label="Cell size"><option value="9">Cell size: small</option><option value="14" selected>Cell size: medium</option><option value="22">Cell size: large, shows each character</option></select>
       </div>
       <div class="rowstats" id="mapstats"></div>
-      <div class="mlegend"><span class="whole">whole token</span><span class="none">split into byte pieces</span><span class="fragrow">row prefix is a fragment token</span><span class="empty">unassigned / outside block</span></div>
+      <div class="mlegend" id="maplegend"><span class="whole">whole token</span><span class="none">split into byte pieces</span><span class="fragrow">row prefix is a fragment token</span><span class="empty">unassigned / outside block</span></div>
       <p class="sub" id="mapnote" hidden></p>
       <div class="mapwrap">
         <div class="mapscroll" id="mapscroll"><canvas id="map"></canvas></div>
@@ -288,22 +288,105 @@ function renderTable(){
 /* ---- Byte map ----
    Row = every UTF-8 byte of a character except the last; column = the last byte (80–BF).
    For multi-byte characters that is exactly cp>>6 (row) and cp&63 (column), for any length. */
-const BLOCKS=ByteMap.BLOCKS, BLOCK=ByteMap.BLOCK, vocabKeys=()=>ByteMap.vocabKeys(V), rowPrefix=ByteMap.rowPrefix, isTextToken=ByteMap.isTextToken, blockData=blk=>ByteMap.blockData(V,blk);
+const BLOCK=ByteMap.BLOCK, vocabKeys=()=>ByteMap.vocabKeys(V), rowPrefix=ByteMap.rowPrefix, isTextToken=ByteMap.isTextToken, blockData=blk=>ByteMap.blockData(V,blk);
+const U=cp=>'U+'+cp.toString(16).toUpperCase().padStart(4,'0');
+const BYTES=['','1 byte','2 bytes','3 bytes','4 bytes'];
 (function fillBlocks(){
-  const groups=[...new Set(BLOCKS.map(b=>b.group))];
-  $('#blocksel').innerHTML=groups.map(g=>`<optgroup label="${g}">`+BLOCKS.filter(b=>b.group===g).map(b=>`<option value="${b.id}"${b.id==='han'?' selected':''}>${b.name} · U+${b.lo.toString(16).toUpperCase().padStart(4,'0')}–${b.hi.toString(16).toUpperCase()}</option>`).join('')+'</optgroup>').join('');
+  const opt=(b,text)=>`<option value="${b.id}"${b.id==='han'?' selected':''}>${text}</option>`;
+  let h='<optgroup label="Overview"><option value="overview">All of Unicode, zoomed out (one cell = 64 characters)</option></optgroup>';
+  for(let n=1;n<=4;n++){
+    const f=ByteMap.FEATURED.filter(b=>b.bytes===n);
+    if(f.length)h+=`<optgroup label="Featured scripts · ${BYTES[n]} per character">`+f.map(b=>opt(b,`${b.name} — ${b.langs} · ${U(b.lo)}–${b.hi.toString(16).toUpperCase()}`)).join('')+'</optgroup>';
+  }
+  for(let n=1;n<=4;n++){
+    const all=ByteMap.ALL.filter(b=>b.bytes===n);
+    h+=`<optgroup label="All ${all.length} Unicode blocks · ${BYTES[n]} per character">`+all.map(b=>opt(b,`${b.name} · ${U(b.lo)}–${b.hi.toString(16).toUpperCase()}`)).join('')+'</optgroup>';
+  }
+  $('#blocksel').innerHTML=h;
 })();
 let mapInfo=null, pinned=null;
 function cssVar(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
-function drawMap(){
-  if(!V||$('#pane-map').hidden)return;
-  const blk=BLOCK[$('#blocksel').value]; const D=blockData(blk);
-  const cell=+$('#cellsel').value, gap=1, labelW=78, headH=16;
+function sizeCanvas(W,H){
   const cv=$('#map');
-  const W=labelW+64*(cell+gap), H=headH+D.rows*(cell+gap);
   const dpr=Math.min(window.devicePixelRatio||1, Math.sqrt(16e6/(W*H))); // Safari caps canvas area near 16 Mpx
   cv.width=Math.floor(W*dpr); cv.height=Math.floor(H*dpr); cv.style.width=W+'px'; cv.style.height=H+'px';
-  const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
+  const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr); return ctx;
+}
+
+/* Overview: one cell per 64-code-point group (one row of the detailed map).
+   Overview row = every UTF-8 byte except the last two (cp>>12); column = the second-to-last byte. */
+function overviewRows(O){
+  const rows=[{kind:'row',label:'1–2 B',groups:[...Array(32).keys()].map(g=>({g,col:g}))}];
+  rows.push({kind:'sep',label:'3 bytes per character · row = lead byte, column = 2nd byte'});
+  for(let R=0;R<16;R++)rows.push({kind:'row',label:'E'+R.toString(16).toUpperCase(),groups:[...Array(64).keys()].map(c=>({g:(R<<6)|c,col:c})).filter(x=>x.g>=32)});
+  rows.push({kind:'sep',label:'4 bytes per character · row = first two bytes, column = 3rd byte'});
+  let gap=null;
+  for(let R=0x10;R<0x110;R++){
+    const groups=[...Array(64).keys()].map(c=>({g:(R<<6)|c,col:c}));
+    if(!groups.some(x=>O.assigned[x.g])){gap=gap||[R,R];gap[1]=R;continue;}
+    if(gap){rows.push({kind:'gap',label:`⋯ ${U(gap[0]<<12)}–${U(((gap[1]+1)<<12)-1)}: no characters to tokenize (unassigned or private use)`});gap=null;}
+    const b=encU.encode(String.fromCodePoint(R<<12));
+    rows.push({kind:'row',label:hex(b.subarray(0,2)),groups});
+  }
+  if(gap)rows.push({kind:'gap',label:`⋯ ${U(gap[0]<<12)}–${U(((gap[1]+1)<<12)-1)}: no characters to tokenize (unassigned or private use)`});
+  return rows;
+}
+function drawOverview(){
+  const O=ByteMap.overviewData(V), rows=overviewRows(O);
+  const cell=Math.max(10,+$('#cellsel').value), gap=1, labelW=78, headH=16, sepH=22;
+  let H=headH; rows.forEach(r=>{r.y=H;H+=r.kind==='row'?cell+gap:sepH;});
+  const W=labelW+64*(cell+gap), ctx=sizeCanvas(W,H);
+  const cFg=cssVar('--fg'), cLine=cssVar('--line'), cMuted=cssVar('--muted'), cBg=cssVar('--bg'), cAcc=cssVar('--whole'), cFrag=cssVar('--frag'), mono=cssVar('--mono');
+  ctx.fillStyle=cBg; ctx.fillRect(0,0,W,H); ctx.textBaseline='middle';
+  ctx.font=`9px ${mono}`; ctx.fillStyle=cMuted;
+  for(let c=0;c<64;c+=4)ctx.fillText((0x80+c).toString(16).toUpperCase(),labelW+c*(cell+gap),headH/2);
+  for(const r of rows){
+    if(r.kind!=='row'){ctx.font=`10px ${mono}`;ctx.fillStyle=cMuted;ctx.fillText(r.label,2,r.y+sepH/2+2);continue;}
+    ctx.font=`${Math.min(10,cell-1)}px ${mono}`; ctx.fillStyle=cMuted; ctx.fillText(r.label,2,r.y+cell/2);
+    for(const {g,col} of r.groups){
+      const x=labelW+col*(cell+gap), a=O.assigned[g];
+      if(!a){ctx.strokeStyle=cLine;ctx.setLineDash([2,2]);ctx.strokeRect(x+.5,r.y+.5,cell-1,cell-1);ctx.setLineDash([]);continue;}
+      ctx.fillStyle=cLine; ctx.fillRect(x,r.y,cell,cell);
+      const f=O.whole[g]/a;
+      if(f>0){ctx.globalAlpha=0.2+0.8*f;ctx.fillStyle=cAcc;ctx.fillRect(x,r.y,cell,cell);ctx.globalAlpha=1;}
+      if(O.frag[g]){ctx.fillStyle=cFrag;ctx.fillRect(x,r.y+cell-3,cell,3);}
+    }
+  }
+  // stats: whole of Unicode, and by UTF-8 length
+  const by=[0,0,0,0,0].map(()=>[0,0]);
+  for(let g=0;g<O.assigned.length;g++){if(!O.assigned[g])continue;const n=ByteMap.utf8Len(g<<6);by[n][0]+=O.assigned[g];by[n][1]+=O.whole[g];}
+  const pct=(w,a)=>{if(!a)return '–';const v=100*w/a;return (v>0&&v<1?v.toFixed(2):v.toFixed(1))+'%';};
+  $('#mapstats').innerHTML=`<span><b>${O.totW.toLocaleString()}</b> / ${O.totA.toLocaleString()} characters in Unicode are whole tokens (${pct(O.totW,O.totA)})</span>`+[1,2,3,4].map(n=>`<span>${BYTES[n]}: <b>${pct(by[n][1],by[n][0])}</b></span>`).join('');
+  const note=$('#mapnote'); note.hidden=false;
+  note.textContent='Each cell is one row of the detailed map: 64 characters that share every UTF-8 byte except the last. Darker blue = more of those 64 characters are whole tokens. A vermilion underline means the shared prefix is itself a fragment token. Click a cell to open its Unicode block.';
+  $('#maplegend').hidden=true;
+  mapInfo={overview:true,rows,cell,gap,labelW,O};
+}
+function overviewCell(ev){
+  const {rows,cell,gap,labelW}=mapInfo; const rc=$('#map').getBoundingClientRect(); const x=ev.clientX-rc.left-labelW, y=ev.clientY-rc.top;
+  if(x<0)return null; const col=Math.floor(x/(cell+gap));
+  const r=rows.find(r=>r.kind==='row'&&y>=r.y&&y<r.y+cell); if(!r)return null;
+  const hit=r.groups.find(q=>q.col===col); return hit&&mapInfo.O.assigned[hit.g]?hit.g:null;
+}
+function showGroup(g){
+  const O=mapInfo.O, lo=g<<6, hi=lo+63, blk=ByteMap.blockOf(lo), pre=rowPrefix(lo);
+  const sample=[];for(let cp=lo;cp<=hi&&sample.length<8;cp++){const ch=String.fromCodePoint(cp);if(!ByteMap.NONCHAR.test(ch))sample.push(ch);}
+  $('#detail').innerHTML=`<div class="big" style="font-size:2rem;letter-spacing:.1em">${sample.join('')}</div><dl><dt>range</dt><dd>${U(lo)}–${hi.toString(16).toUpperCase()}</dd><dt>block</dt><dd>${blk?blk.name:'–'}</dd><dt>bytes</dt><dd>${ByteMap.utf8Len(lo)} per character</dd>${pre.length?`<dt>shared prefix</dt><dd>${hex(pre)} ${O.frag[g]?'<span class="inv">is a fragment token</span>':pre.length>=2?'is not a token':''}</dd>`:''}<dt>whole tokens</dt><dd>${O.whole[g]} / ${O.assigned[g]} characters</dd></dl><p class="sub" style="font-family:var(--sans)">Click to open ${blk?blk.name:'this block'}.</p>`;
+}
+function openGroup(g){
+  const blk=ByteMap.blockOf(g<<6); if(!blk)return;
+  $('#blocksel').value=blk.id; pinned=null; drawMap(); writeHash();
+  const {cell,gap,headH}=mapInfo; $('#mapscroll').scrollTop=headH+((g-(blk.lo>>6))*(cell+gap))-40;
+  $('#detail').innerHTML='<p class="sub">Hover or tap a cell.</p>';
+}
+
+function drawMap(){
+  if(!V||$('#pane-map').hidden)return;
+  if($('#blocksel').value==='overview'){drawOverview();return;}
+  $('#maplegend').hidden=false;
+  const blk=BLOCK[$('#blocksel').value]; const D=blockData(blk);
+  const cell=+$('#cellsel').value, gap=1, labelW=78, headH=16;
+  const W=labelW+64*(cell+gap), H=headH+D.rows*(cell+gap), ctx=sizeCanvas(W,H);
   const cFg=cssVar('--fg'), cLine=cssVar('--line'), cMuted=cssVar('--muted'), cBg=cssVar('--bg'), cAcc=cssVar('--whole'), cFrag=cssVar('--frag'), mono=cssVar('--mono');
   ctx.fillStyle=cBg; ctx.fillRect(0,0,W,H);
   ctx.font=`${Math.min(10,cell)}px ${mono}`; ctx.fillStyle=cMuted; ctx.textBaseline='middle';
@@ -330,7 +413,7 @@ function drawMap(){
   mapInfo={blk,D,cell,gap,labelW,headH};
 }
 function cellAt(ev){
-  if(!mapInfo)return null; const {D,cell,gap,labelW,headH,blk}=mapInfo;
+  if(!mapInfo||mapInfo.overview)return null; const {D,cell,gap,labelW,headH,blk}=mapInfo;
   const r=$('#map').getBoundingClientRect(); const x=ev.clientX-r.left-labelW, y=ev.clientY-r.top-headH;
   if(x<0||y<0)return null; const c=Math.floor(x/(cell+gap)), row=Math.floor(y/(cell+gap));
   if(c<0||c>63||row<0||row>=D.rows||!D.state[row*64+c])return null; return ((D.r0+row)<<6)|c;
@@ -354,8 +437,12 @@ function showDetail(cp){
   if(!whole&&first.length===1&&first[0]>=0xC0){const [lo,hi]=leadRange(first[0]);leadNote=`<p class="sub" style="font-family:var(--sans)">The first token is the bare lead byte <b>${hex(first)}</b>, which every character from U+${lo.toString(16).toUpperCase().padStart(4,'0')} to U+${hi.toString(16).toUpperCase()} starts with, so it doesn't tell the model which script this is.</p>`;}
   $('#detail').innerHTML=`<div class="big">${ch}</div><dl><dt>code point</dt><dd>U+${cp.toString(16).toUpperCase().padStart(4,'0')}</dd><dt>UTF-8</dt><dd>${hex(b)} (${b.length} byte${b.length>1?'s':''})</dd><dt>UTF-16</dt><dd>${utf16(cp)}</dd><dt>status</dt><dd>${whole?'whole token':'<span class="inv">split into '+ids.length+' tokens</span>'}</dd><dt>encoding</dt><dd class="split">${split}</dd>${prefixLine}</dl>${leadNote}${pinned!==null?'<p class="sub" style="font-family:var(--sans)">pinned · click again to unpin</p>':''}`;
 }
-$('#map').addEventListener('mousemove',ev=>{if(pinned!==null)return;const cp=cellAt(ev);if(cp!==null)showDetail(cp);});
-$('#map').addEventListener('click',ev=>{const cp=cellAt(ev);if(cp===null)return;pinned=(pinned===cp)?null:cp;showDetail(cp);writeHash();});
+$('#map').addEventListener('mousemove',ev=>{
+  if(mapInfo&&mapInfo.overview){const g=overviewCell(ev);if(g!==null)showGroup(g);return;}
+  if(pinned!==null)return;const cp=cellAt(ev);if(cp!==null)showDetail(cp);});
+$('#map').addEventListener('click',ev=>{
+  if(mapInfo&&mapInfo.overview){const g=overviewCell(ev);if(g!==null)openGroup(g);return;}
+  const cp=cellAt(ev);if(cp===null)return;pinned=(pinned===cp)?null:cp;showDetail(cp);writeHash();});
 $('#blocksel').addEventListener('change',()=>{pinned=null;$('#detail').innerHTML='<p class="sub">Hover or tap a cell.</p>';drawMap();writeHash();});
 $('#cellsel').addEventListener('change',drawMap);
 
@@ -367,7 +454,7 @@ function showTab(id){
   if(V)writeHash();
 }
 $('#tab-map').onclick=()=>showTab('map'); $('#tab-tok').onclick=()=>showTab('tok');
-{const h=readHash(); if(h.block&&BLOCK[h.block])$('#blocksel').value=h.block; if(h.cp&&/^[0-9A-F]+$/i.test(h.cp))pinned=parseInt(h.cp,16); if(h.tab==='map')$('#pane-map').hidden=false,$('#pane-tok').hidden=true,$('#tab-map').setAttribute('aria-selected','true'),$('#tab-tok').setAttribute('aria-selected','false');}
+{const h=readHash(); if(h.block&&(BLOCK[h.block]||h.block==='overview'))$('#blocksel').value=h.block; if(h.cp&&/^[0-9A-F]+$/i.test(h.cp))pinned=parseInt(h.cp,16); if(h.tab==='map')$('#pane-map').hidden=false,$('#pane-tok').hidden=true,$('#tab-map').setAttribute('aria-selected','true'),$('#tab-tok').setAttribute('aria-selected','false');}
 
 // URL state: #enc=qwen3&tab=map (a bare #map still opens the map)
 function readHash(){const h={};for(const kv of location.hash.slice(1).split('&')){if(!kv)continue;const [k,v]=kv.split('=');h[k]=v===undefined?'':decodeURIComponent(v);}if('map' in h)h.tab='map';return h;}
