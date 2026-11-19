@@ -29,6 +29,7 @@ p{margin:0;max-width:65ch}
 .sub{color:var(--muted);font-size:.95rem}
 header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap}
 .encpick{display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.loadstatus{min-height:1.2em;text-transform:none;letter-spacing:0;font-size:.78rem;color:var(--muted)}
 .encpick select{font-size:.95rem;text-transform:none;letter-spacing:0;padding:8px 12px;border-color:var(--fg);min-width:min(100%,320px);max-width:100%;color:var(--fg)}
 textarea{width:100%;min-height:96px;font:1rem/1.6 var(--cjk),var(--sans);background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:0;padding:12px 14px;resize:vertical}
 textarea:focus{border-color:var(--fg)}
@@ -156,6 +157,7 @@ footer a{color:var(--fg);text-underline-offset:3px}
           <option value="mistral-v0.3">Mistral 7B v0.3 · 33k tokens</option>
         </optgroup>
       </select>
+      <span id="loadstatus" class="loadstatus" aria-live="polite"></span>
     </label>
   </header>
 
@@ -253,8 +255,8 @@ footer a{color:var(--fg);text-underline-offset:3px}
   <footer>Byte Pair Lens · tokenizers run in your browser and match their reference encoders · <b>Built with Llama</b> · Vocabularies: OpenAI tiktoken (MIT); Qwen3, Mistral (Apache-2.0); Llama 3.1, Gemma 3 and DeepSeek-V3 under their own licences, with their use restrictions: see the <a href="licenses/NOTICE.txt">notice and licences</a>.</footer>
 </div>
 
-<script src="bpe.js"></script>
-<script src="bytemap.js"></script>
+<script src="bpe.js?v=207a23d25e02"></script>
+<script src="bytemap.js?v=a935f43320fe"></script>
 <script>
 (function(){
 const $=s=>document.querySelector(s);
@@ -264,15 +266,55 @@ const encU=new TextEncoder();
 
 const hex=BPE.hex;
 
+/* ---- Data loading ----
+   manifest.json lists a content hash per data file (scripts/build_manifest.py). Files are fetched as
+   name?v=hash and kept in Cache Storage, so repeat visits read them from disk with no request, and a
+   new page can never be paired with an old vocabulary file. Falls back to plain fetch where the
+   Cache API is unavailable (file://, some private windows). */
+const DATA_CACHE='bpl-data-v1';
+let manifestP=null;
+function manifest(){
+  if(!manifestP)manifestP=fetch('manifest.json',{cache:'no-cache'}).then(r=>r.ok?r.json():{files:{}}).catch(()=>({files:{}}));
+  return manifestP;
+}
+async function dataURL(name){const m=await manifest();const f=m.files[name];return f?`${name}?v=${f.v}`:name;}
+// fetch a data file, from Cache Storage when we have this version; onBytes(n) reports progress
+async function getData(name,onBytes){
+  const url=await dataURL(name);
+  let store=null;
+  try{store=await caches.open(DATA_CACHE);const hit=await store.match(url);if(hit){onBytes&&onBytes(Infinity);return hit.json();}}catch(e){store=null;}
+  const r=await fetch(url); if(!r.ok)throw new Error(name+': HTTP '+r.status);
+  let body;
+  if(onBytes&&r.body){ // count decompressed bytes as they arrive
+    const reader=r.body.getReader(), parts=[]; let n=0;
+    for(;;){const {done,value}=await reader.read(); if(done)break; parts.push(value); n+=value.length; onBytes(n);}
+    body=new Blob(parts,{type:'application/json'});
+  }else body=await r.blob();
+  if(store){
+    try{
+      await store.put(url,new Response(body,{headers:{'Content-Type':'application/json'}}));
+      for(const k of await store.keys()){const u=new URL(k.url);if(u.pathname.endsWith('/'+name)&&!k.url.endsWith(url))store.delete(k);} // drop older versions
+    }catch(e){}
+  }
+  return JSON.parse(await body.text());
+}
+function mb(n){return (n/1048576).toFixed(1)+' MB';}
 async function load(enc){
   if(cache[enc])return cache[enc];
-  $('#strip').innerHTML='<span class="loading">loading '+enc+' vocab…</span>';
-  const r=await fetch(enc+'.json'); if(!r.ok)throw new Error(enc+'.json: HTTP '+r.status);
-  const v=BPE.load(await r.json());
-  if(v.kind==='sp'){ // merges are only needed to encode text, so they live in their own file
-    const m=await fetch(enc+'.merges.json'); if(!m.ok)throw new Error(enc+'.merges.json: HTTP '+m.status);
-    v.setMerges(await m.json());
-  }
+  const label=[...$('#encsel').options].find(o=>o.value===enc)?.textContent.split(' · ')[0]||enc;
+  const m=await manifest();
+  const files=[enc+'.json'], sp=m.files[enc+'.merges.json']; if(sp)files.push(enc+'.merges.json');
+  const total=files.reduce((a,f)=>a+((m.files[f]||{}).size||0),0), got={};
+  const status=t=>{$('#strip').innerHTML='<span class="loading">'+t+'</span>';$('#loadstatus').textContent=t;};
+  const progress=()=>{const n=files.reduce((a,f)=>a+(got[f]===Infinity?((m.files[f]||{}).size||0):(got[f]||0)),0);status(`Loading ${label} vocabulary… ${total?mb(n)+' of '+mb(total):''}`);};
+  progress();
+  // vocabulary and merges download in parallel
+  const [j,merges]=await Promise.all(files.map(f=>getData(f,n=>{got[f]=n;progress();})));
+  status(`Preparing ${label}…`);
+  await new Promise(r=>setTimeout(r)); // let the status paint before the synchronous build
+  const v=BPE.load(j);
+  if(v.kind==='sp')v.setMerges(merges);
+  $('#loadstatus').textContent='';
   cache[enc]=v;
   return v;
 }
@@ -503,9 +545,7 @@ const METRIC={
 };
 async function loadCoverage(){
   if(COV)return;
-  const [a,b]=await Promise.all([fetch('coverage.json'),fetch('freq.json')]);
-  if(!a.ok||!b.ok)throw new Error('could not load coverage data');
-  COV=await a.json(); FREQ=await b.json();
+  [COV,FREQ]=await Promise.all([getData('coverage.json'),getData('freq.json')]);
   $('#covscript').innerHTML=ByteMap.FEATURED.map(b=>`<option value="${b.id}">${b.name} — ${b.langs}</option>`).join('');
 }
 function covCell(enc,sid){return COV.rows.find(r=>r.tokenizer===enc&&r.script===sid);}
@@ -584,7 +624,7 @@ $('#covtable').addEventListener('click',e=>{
   $('#covtitle').scrollIntoView({behavior:'smooth',block:'start'});
 });
 $('#covscript').addEventListener('change',e=>{covScript=e.target.value;renderCovTable();renderCovDetail();writeHash();});
-$('#covcsv').addEventListener('click',()=>{const a=document.createElement('a');a.href='coverage.csv';a.download='byte-pair-lens-coverage.csv';document.body.append(a);a.click();a.remove();});
+$('#covcsv').addEventListener('click',async()=>{const a=document.createElement('a');a.href=await dataURL('coverage.csv');a.download='byte-pair-lens-coverage.csv';document.body.append(a);a.click();a.remove();});
 window.addEventListener('resize',()=>{if(!$('#pane-cov').hidden&&COV&&FREQ.scripts[covScript])drawCovChart(ByteMap.coverage(V,ByteMap.BLOCK[covScript],FREQ.scripts[covScript]),FREQ.scripts[covScript]);});
 
 const TABS=['tok','map','cov'];

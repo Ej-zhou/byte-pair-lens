@@ -35,6 +35,9 @@ cd scripts && python3 check_map.py [name] # bytemap.js vs an independent recount
 cd scripts && uv run --with pyarrow --with fsspec --with aiohttp --with requests python build_freq.py  # docs/freq.json from Wikipedia 20231101
 cd scripts && node build_coverage.cjs     # docs/coverage.json + docs/coverage.csv
 cd scripts && python3 build_blocks.py     # Unicode block list inside docs/bytemap.js
+
+# after changing ANY file in docs/ that the page loads: refresh hashes (the page fetches name?v=hash)
+cd scripts && python3 build_manifest.py   # --check exits 1 if stale; run it before merging
 ```
 
 No bundler, linter or test framework. To test one tokenizer, pass its name. Add test strings to `TESTS` in `check_hf.py` (and `tests` in `check_encoder.mjs`). The emoji block's "assigned" count depends on the Unicode version of the JS engine vs Python; `check_map.py` reports it but doesn't fail on it.
@@ -49,6 +52,7 @@ No bundler, linter or test framework. To test one tokenizer, pass its name. Add 
 
 ## Gotchas
 
+- Data loading: the page fetches every data file as `name?v=<hash from manifest.json>` and keeps it in Cache Storage (`bpl-data-v1`), so a stale manifest means users keep old data. Rerun `build_manifest.py` after rebuilding data or editing `bpe.js`/`bytemap.js`.
 - Both checks import `docs/bpe.js` directly, so they test the code the page runs. Change tokenisation only in `bpe.js`.
 - The tool's credibility rests on the browser tokenizer being byte-identical to the reference; keep `check_encoder.mjs` passing and extend it when adding tokenizers.
 - HF byte-level BPE `tokenizer.json` files store tokens in GPT-2's bytes-to-unicode alphabet; decode back to raw bytes before building `ranks`.
