@@ -71,4 +71,10 @@ Each vocab file's `source` field records the repo it was built from and a sha256
 
 ## Licence
 
-MIT. Vocabulary data is from [tiktoken](https://github.com/openai/tiktoken) (MIT), redistributed via the `gpt-tokenizer` npm package.
+Code: MIT. The vocabulary files keep their own licences; copies and the required notices are in [`docs/licenses/`](docs/licenses/) (also served with the site):
+
+- Llama 3.1: Llama 3.1 Community License ("Built with Llama" is shown in the page footer)
+- Gemma 3: Gemma Terms of Use, including the use restrictions in Section 3.2
+- DeepSeek-V3: DeepSeek License Agreement, including the use-based restrictions in Attachment A
+- Qwen3, Mistral 7B v0.3: Apache-2.0
+- r50k_base, cl100k_base, o200k_base: from [tiktoken](https://github.com/openai/tiktoken) (MIT), redistributed via the `gpt-tokenizer` npm package

@@ -1,0 +1,18 @@
+Byte Pair Lens redistributes tokenizer vocabularies (derived from each model's tokenizer.json) in docs/*.json.
+Only the tokenizers are included; no model weights.
+
+Llama 3.1 (docs/llama3.1.json)
+  Llama 3.1 is licensed under the Llama 3.1 Community License, Copyright © Meta Platforms, Inc. All Rights Reserved.
+  Licence: LLAMA-3.1-COMMUNITY-LICENSE.txt
+
+Gemma 3 (docs/gemma3.json, docs/gemma3.merges.json)
+  Gemma is provided under and subject to the Gemma Terms of Use found at gemma.ai/resources/terms
+  The use restrictions in Section 3.2 of those terms and the Gemma Prohibited Use Policy apply to these files.
+  Terms: GEMMA-TERMS-OF-USE.txt
+
+DeepSeek-V3 (docs/deepseek-v3.json)
+  Subject to the DeepSeek License Agreement, including the use-based restrictions in paragraph 5 and Attachment A.
+  Licence: DEEPSEEK-LICENSE-MODEL.txt
+
+Qwen3 (docs/qwen3.json) and Mistral 7B v0.3 (docs/mistral-v0.3.*): Apache-2.0.
+r50k_base, cl100k_base, o200k_base: from OpenAI tiktoken via the gpt-tokenizer package, MIT.
