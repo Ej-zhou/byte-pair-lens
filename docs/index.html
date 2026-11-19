@@ -8,9 +8,12 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400&display=swap">
 <style>
 /* Layout: a byte inspector in ink on paper. One column, mono-first, hairline rules instead of cards.
-   Single light theme (always white, by request). Monochrome encoding: whole token = outlined, alternating paper/tint; byte fragment = inverted (ink block). */
+   Single light theme (always white, by request). Chrome is black and white; colour is reserved for annotations:
+   whole tokens cycle through five pale tints, byte fragments are solid vermilion, the map uses blue = whole token. */
 :root{
   --bg:#ffffff;--fg:#111111;--muted:#525252;--line:#d6d6d6;--tint:#f2f2f2;
+  --tok-1:#dbe7fd;--tok-2:#d9f2e1;--tok-3:#fcefc7;--tok-4:#fbe0ec;--tok-5:#e8e2fb;--tok-edge:rgba(17,17,17,.14);
+  --frag:#d6400f;--frag-ink:#ffffff;--whole:#2f5fd8;
   --mono:"IBM Plex Mono","SFMono-Regular",Menlo,Consolas,monospace;--sans:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;--cjk:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
   color-scheme:light;
 }
@@ -37,16 +40,17 @@ textarea:focus-visible,input:focus-visible,select:focus-visible,button:focus-vis
 .stats b{font-weight:600;color:var(--fg);font-size:1.1rem;margin-left:4px}
 .strip{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;font-family:var(--cjk),var(--mono)}
 .tok{padding:4px 8px;border:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;min-width:0}
-.tok.alt{background:var(--tint)}
+.tok.t1{background:var(--tok-1)}.tok.t2{background:var(--tok-2)}.tok.t3{background:var(--tok-3)}.tok.t4{background:var(--tok-4)}.tok.t5{background:var(--tok-5)}
+.tok[class*=" t"]{border-color:var(--tok-edge)}
 .tok .t{font-size:1.2rem;white-space:pre}
 .tok .b{font-family:var(--mono);font-size:.7rem;color:var(--muted);letter-spacing:.02em}
-.tok.frag{background:var(--fg);border-color:var(--fg)}
-.tok.frag .t{color:var(--bg);font-family:var(--mono);font-size:.95rem}
-.tok.frag .b{color:var(--bg);opacity:.85}
+.tok.frag{background:var(--frag);border-color:var(--frag)}
+.tok.frag .t{color:var(--frag-ink);font-family:var(--mono);font-size:.95rem}
+.tok.frag .b{color:var(--frag-ink);opacity:.85}
 .legend,.mlegend{display:flex;gap:18px;flex-wrap:wrap;font-size:.85rem;color:var(--muted);margin-top:12px}
 .legend span::before,.mlegend span::before{content:"";display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px;border:1px solid var(--fg)}
-.legend .f::before{background:var(--fg)}
-.legend .w::before{background:var(--bg)}
+.legend .f::before{background:var(--frag);border-color:var(--frag)}
+.legend .w::before{background:linear-gradient(90deg,var(--tok-1) 0 33%,var(--tok-2) 33% 66%,var(--tok-3) 66%);border-color:var(--tok-edge)}
 .samples{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
 .samples button{font:inherit;font-size:.85rem;background:none;border:1px solid var(--line);padding:3px 10px;color:var(--muted);cursor:pointer;font-family:var(--cjk),var(--sans)}
 .samples button:hover{border-color:var(--fg);color:var(--fg)}
@@ -57,7 +61,7 @@ textarea:focus-visible,input:focus-visible,select:focus-visible,button:focus-vis
 .bar .lab{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bar .rail{display:block;height:10px;background:var(--line);overflow:hidden;min-width:0}
 .bar .fill{display:block;height:100%;background:var(--fg);transition:width .3s}
-.bar[data-cat="1"] .fill{background:repeating-linear-gradient(135deg,var(--fg) 0 2px,transparent 2px 4px)}
+.bar[data-cat="1"] .fill{background:var(--frag)}
 .bar .n{text-align:right;color:var(--muted)}
 .hint{font-size:.85rem;color:var(--muted);margin-top:12px}
 .ctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
@@ -71,7 +75,7 @@ th{color:var(--muted);font-weight:600;font-size:.74rem;text-transform:uppercase;
 td.txt{font-family:var(--cjk),var(--mono);font-size:1.05rem}
 td.hex,td.cat{color:var(--muted)}
 td.cat{font-size:.8rem}
-.inv{background:var(--fg);color:var(--bg);padding:0 4px}
+.inv{background:var(--frag);color:var(--frag-ink);padding:0 4px}
 .pager{display:flex;gap:10px;align-items:center;margin-top:12px;font-family:var(--mono);font-size:.85rem;color:var(--muted)}
 .pager button{font:inherit;background:none;border:1px solid var(--line);color:var(--fg);padding:3px 10px;cursor:pointer}
 .pager button:hover:not(:disabled){border-color:var(--fg)}
@@ -94,16 +98,16 @@ td.cat{font-size:.8rem}
 .mapscroll{overflow:auto;max-height:70vh;border:1px solid var(--line);background:var(--bg);position:relative}
 .mapscroll canvas{display:block;image-rendering:pixelated}
 .mlegend{margin:10px 0}
-.mlegend .whole::before{background:var(--fg)}
+.mlegend .whole::before{background:var(--whole);border-color:var(--whole)}
 .mlegend .none::before{background:var(--line);border-color:var(--line)}
-.mlegend .fragrow::before{width:3px;background:var(--fg)}
+.mlegend .fragrow::before{width:3px;background:var(--frag);border-color:var(--frag)}
 .detail{font-family:var(--mono);font-size:.88rem;display:grid;gap:8px;align-content:start}
 .detail .big{font-family:var(--cjk);font-size:4.5rem;line-height:1;text-align:center;padding:16px 0;border-bottom:1px solid var(--line)}
 .detail dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:0}
 .detail dt{color:var(--muted)}.detail dd{margin:0;word-break:break-all}
 .detail .split{display:flex;gap:4px;flex-wrap:wrap}
-.detail .split span{padding:2px 6px;border:1px solid var(--line)}
-.detail .split span.frag{background:var(--fg);border-color:var(--fg);color:var(--bg)}
+.detail .split span{padding:2px 6px;background:var(--tok-1);border:1px solid var(--tok-edge)}
+.detail .split span.frag{background:var(--frag);border-color:var(--frag);color:var(--frag-ink)}
 .rowstats{font-family:var(--mono);font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:20px;flex-wrap:wrap;margin-bottom:8px}
 .rowstats b{color:var(--fg);font-weight:600}
 footer{font-family:var(--mono);font-size:.8rem;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
@@ -163,7 +167,7 @@ footer a{color:var(--fg);text-underline-offset:3px}
     </div>
     <div class="stats" id="stats"></div>
     <div class="strip" id="strip"><span class="loading">loading vocab…</span></div>
-    <div class="legend"><span class="w">whole token (alternating shade per token)</span><span class="f">byte fragment — not a complete UTF-8 character</span></div>
+    <div class="legend"><span class="w">whole token (each token gets its own colour)</span><span class="f">byte fragment — not a complete UTF-8 character</span></div>
   </section>
 
   <div class="two">
@@ -201,7 +205,7 @@ const PAT={
   cl100k_base:/(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+/gu,
   o200k_base:/[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n\/]*|\s*[\r\n]+|\s+(?!\S)|\s+/gu
 };
-const TOKCOL=['','alt'];
+const TOKCOL=['t1','t2','t3','t4','t5'];
 const cache={}; let V=null, curEnc='cl100k_base';
 const dec=new TextDecoder('utf-8',{fatal:true});
 const encU=new TextEncoder();
@@ -250,7 +254,7 @@ function render(){
   ids.forEach((id,i)=>{
     const b=V.bytes[id], t=V.text[id];
     const d=document.createElement('div'); d.className='tok';
-    if(t===null){d.classList.add('frag');}else if(TOKCOL[i%TOKCOL.length]){d.classList.add(TOKCOL[i%TOKCOL.length]);}
+    if(t===null){d.classList.add('frag');}else{d.classList.add(TOKCOL[i%TOKCOL.length]);}
     const tt=document.createElement('span');tt.className='t';
     if(t===null){tt.textContent=hex(b);}else{tt.textContent=t.replace(/\n/g,'⏎').replace(/\t/g,'⇥'); if(!t.trim())tt.classList.add('ws');}
     const bb=document.createElement('span');bb.className='b';bb.textContent=(t===null?'fragment · ':'')+'#'+id+' · '+hex(b);
@@ -313,7 +317,7 @@ function drawMap(){
   const W=labelW+64*(cell+gap), H=headH+rows*(cell+gap);
   cv.width=W*dpr; cv.height=H*dpr; cv.style.width=W+'px'; cv.style.height=H+'px';
   const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
-  const cFg=cssVar('--fg'), cLine=cssVar('--line'), cMuted=cssVar('--muted'), cBg=cssVar('--bg'), cAcc=cFg, cFrag=cFg;
+  const cFg=cssVar('--fg'), cLine=cssVar('--line'), cMuted=cssVar('--muted'), cBg=cssVar('--bg'), cAcc=cssVar('--whole'), cFrag=cssVar('--frag');
   ctx.font=`${Math.min(10,cell)}px ${cssVar('--mono')}`; ctx.fillStyle=cMuted; ctx.textBaseline='middle';
   if(cell>=14)for(let c=0;c<64;c++){ctx.fillText((0x80+c).toString(16).toUpperCase(),labelW+c*(cell+gap)+1,headH/2);}
   let covered=0, fragRows=0;
