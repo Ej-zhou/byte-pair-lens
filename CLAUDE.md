@@ -34,15 +34,13 @@ There is no build step, bundler, linter or test framework. `check_encoder.mjs` i
 
 - `docs/` is the deployable site, served as-is (GitHub Pages from `/docs`). `docs/index.html` is the entire app: HTML + CSS + one IIFE of vanilla JS, no dependencies. Keep it dependency-free.
 - Vocab JSON (`docs/<enc>.json`): `{name, cats, cat, tokens}` where `tokens[i]` is base64 of token id `i`'s raw bytes (rank order = merge order) and `cat[i]` indexes into `cats`. Categories are computed offline by `classify()` in `scripts/build_vocab.py`; the browser does not reclassify, so changing script buckets means regenerating the JSON.
-- Tokenizer in the browser: `load(enc)` decodes tokens to `Uint8Array`s and builds `ranks: Map<latin1-string-of-bytes, id>` (bytes → string via `String.fromCharCode` per byte, the `key()` helper). `encode()` pre-tokenises with `PAT[enc]` (regexes copied from tiktoken), looks up each piece directly, else runs `bpe()` (repeatedly merge the lowest-rank adjacent pair). `V` is the currently loaded vocab and `curEnc` its name; `bpe`/`encode` read these globals.
+- Tokenizer engine: `docs/bpe.js` (classic script exposing global `BPE`; also `require`-able from Node). `BPE.load(json)` builds a vocab object with `bytes`, `text`, `encode()`. Two families: `bytelevel` (tiktoken files and HF byte-level BPE; merge rank = token id, verified for every file we ship) and `sp` (SentencePiece-style BPE with byte fallback; merge rank = merges-list order, loaded from a separate `<enc>.merges.json`). The three original tiktoken JSONs have no `kind`/`pre`, so their regexes live in `BPE.TIKTOKEN`. `index.html` holds only UI code; `V` is the loaded vocab and `curEnc` its name.
 - CJK map: `BLOCKS` defines code-point ranges; `buildSets()` computes `hanSet` (code points whose 3-byte UTF-8 is a single token) and `prefixSet` (2-byte prefixes that are tokens); `drawMap()` renders to `<canvas>` reading colours via `getComputedStyle`, so it follows the theme. `buildSets()` currently assumes 3-byte characters (`b.length===3`).
 - Theming: CSS custom properties on `:root`, dark mode via `prefers-color-scheme` and `[data-theme]`.
 
 ## Gotchas
 
-- `check_encoder.mjs` does **not** execute `index.html`'s `bpe`/`encode`. It extracts only the `PAT` object by regex (`/const PAT=(\{[\s\S]*?\});\nconst TOKCOL/`) and uses its own copy of the BPE loop. So:
-  - `const PAT={...};` must stay immediately followed by a line starting `const TOKCOL`, or the check breaks.
-  - If you change the BPE/encode logic in `index.html`, mirror it in `check_encoder.mjs` (or refactor so both share code), otherwise the check passes without testing your change.
+- Both checks import `docs/bpe.js` directly, so they test the code the page runs. Change tokenisation only in `bpe.js`.
 - The tool's credibility rests on the browser tokenizer being byte-identical to the reference; keep `check_encoder.mjs` passing and extend it when adding tokenizers.
 - HF byte-level BPE `tokenizer.json` files store tokens in GPT-2's bytes-to-unicode alphabet; decode back to raw bytes before building `ranks`.
 - Vocab JSON is large (o200k ≈ 3.1 MB). If adding 4-byte blocks (e.g. Ext B, 42k chars) to the map, cache an offscreen canvas per (enc, block) instead of redrawing.

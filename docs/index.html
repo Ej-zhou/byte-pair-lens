@@ -197,53 +197,29 @@ footer a{color:var(--fg);text-underline-offset:3px}
   <footer>Byte Pair Lens · vocabularies from <a href="https://github.com/openai/tiktoken">tiktoken</a>; BPE runs client-side and matches the reference encoder.</footer>
 </div>
 
+<script src="bpe.js"></script>
 <script>
 (function(){
 const $=s=>document.querySelector(s);
-const PAT={
-  r50k_base:/'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/gu,
-  cl100k_base:/(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+/gu,
-  o200k_base:/[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n\/]*|\s*[\r\n]+|\s+(?!\S)|\s+/gu
-};
 const TOKCOL=['t1','t2','t3','t4','t5'];
 const cache={}; let V=null, curEnc='cl100k_base';
-const dec=new TextDecoder('utf-8',{fatal:true});
 const encU=new TextEncoder();
 
-function b64ToBytes(s){const b=atob(s);const a=new Uint8Array(b.length);for(let i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
-function key(bytes,i,j){let s='';for(let k=i;k<j;k++)s+=String.fromCharCode(bytes[k]);return s;}
-function hex(b){return Array.from(b,x=>x.toString(16).toUpperCase().padStart(2,'0')).join(' ');}
+const hex=BPE.hex;
 
 async function load(enc){
   if(cache[enc])return cache[enc];
   $('#strip').innerHTML='<span class="loading">loading '+enc+' vocab…</span>';
-  const r=await fetch(enc+'.json'); const j=await r.json();
-  const bytes=j.tokens.map(b64ToBytes);
-  const ranks=new Map(); bytes.forEach((b,i)=>ranks.set(key(b,0,b.length),i));
-  const text=bytes.map(b=>{try{return dec.decode(b)}catch(e){return null}});
-  cache[enc]={...j,bytes,ranks,text};
-  return cache[enc];
-}
-
-function bpe(bytes){ // merge lowest-rank adjacent pair until none
-  let parts=[];for(let i=0;i<bytes.length;i++)parts.push([i,i+1]);
-  while(parts.length>1){
-    let best=-1,bestRank=Infinity;
-    for(let i=0;i<parts.length-1;i++){const r=V.ranks.get(key(bytes,parts[i][0],parts[i+1][1]));if(r!==undefined&&r<bestRank){bestRank=r;best=i;}}
-    if(best<0)break;
-    parts.splice(best,2,[parts[best][0],parts[best+1][1]]);
+  const r=await fetch(enc+'.json'); if(!r.ok)throw new Error(enc+'.json: HTTP '+r.status);
+  const v=BPE.load(await r.json());
+  if(v.kind==='sp'){ // merges are only needed to encode text, so they live in their own file
+    const m=await fetch(enc+'.merges.json'); if(!m.ok)throw new Error(enc+'.merges.json: HTTP '+m.status);
+    v.setMerges(await m.json());
   }
-  return parts.map(([a,b])=>V.ranks.get(key(bytes,a,b)));
+  cache[enc]=v;
+  return v;
 }
-function encode(str){
-  const ids=[];
-  for(const m of str.matchAll(PAT[curEnc])){
-    const b=encU.encode(m[0]);
-    const direct=V.ranks.get(key(b,0,b.length));
-    if(direct!==undefined)ids.push(direct); else ids.push(...bpe(b));
-  }
-  return ids;
-}
+const encode=str=>V.encode(str);
 
 function render(){
   if(!V)return;
