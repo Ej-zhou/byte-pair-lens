@@ -99,6 +99,10 @@
       }
     };
     V.encode = str => encode(V, str);
+    // Tokens for one bare character: its UTF-8 bytes (or the character, for "sp") merged by BPE,
+    // with no normalisation, no pre-tokenisation and no leading '▁'. Used by the byte map, so map
+    // numbers don't depend on Mistral's start-of-text prefix.
+    V.splitChar = ch => (V.kind === 'sp' ? bpeSp(V, ch) : bpeBytes(V, utf8.encode(ch)));
     return V;
   }
 
