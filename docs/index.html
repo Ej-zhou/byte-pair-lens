@@ -186,6 +186,27 @@ td.cat{font-size:.8rem}
 .tree .nd.frag small{color:var(--frag-ink);opacity:.8}
 .tree .nd.leaf.frag{background:var(--bg);color:var(--frag);border-color:var(--frag)}
 .tree .nd.leaf.frag small{color:var(--frag);opacity:.8}
+.howto{margin:-4px 0 12px}
+.howto summary{cursor:pointer;font-size:.88rem;color:var(--muted);width:max-content}
+.howto summary:hover{color:var(--fg)}
+.howto p{margin-top:8px}
+.mapnav{display:grid;gap:10px;margin-bottom:12px}
+.crumbs{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:.95rem;min-height:32px}
+.crumbs .sepch{color:var(--muted);margin:0 6px}
+.crumbs .here{font-weight:600}
+.crumbs .rng{font-family:var(--mono);font-size:.78rem;color:var(--muted)}
+.scriptchips{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+.scriptchips .glab{font-family:var(--mono);font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 2px 0 8px}
+.scriptchips .glab:first-child{margin-left:0}
+.scriptchips button{font:inherit;font-size:.82rem;background:var(--bg);color:var(--fg);border:1px solid var(--line);padding:4px 9px;cursor:pointer}
+.scriptchips button:hover{border-color:var(--fg)}
+.scriptchips button[aria-pressed="true"]{background:var(--fg);border-color:var(--fg);color:var(--bg)}
+.mapctl{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.mapctl input{flex:1;min-width:220px}
+.seg{display:inline-flex;align-items:center;border:1px solid var(--line)}
+.seg span{font-family:var(--mono);font-size:.72rem;color:var(--muted);padding:0 8px;text-transform:uppercase;letter-spacing:.06em}
+.seg button{font:inherit;font-size:.82rem;background:var(--bg);color:var(--fg);border:0;border-left:1px solid var(--line);padding:5px 11px;cursor:pointer}
+.seg button[aria-checked="true"]{background:var(--fg);color:var(--bg)}
 footer{font-family:var(--mono);font-size:.8rem;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
 footer a{color:var(--fg);text-underline-offset:3px}
 </style>
@@ -240,10 +261,17 @@ footer a{color:var(--fg);text-underline-offset:3px}
   <div id="pane-map" role="tabpanel" hidden>
     <section>
       <h2>Every character by its UTF-8 bytes</h2>
-      <p class="sub" style="margin-bottom:10px">One cell per character. Each row is every UTF-8 byte except the last (e.g. <span style="font-family:var(--mono)">E4 B8</span>); each column is the last byte, 80–BF, so a row holds 64 consecutive code points. The same rule covers 2-, 3- and 4-byte characters. A cell is blue when the selected tokenizer has that character as one whole token; otherwise the character is split into pieces of its bytes. A vermilion marker means the row prefix itself is a fragment token, so the characters in that row that aren't whole tokens cost two tokens instead of one per byte.</p>
-      <div class="ctl">
-        <select id="blocksel" aria-label="Unicode block" style="max-width:100%"></select>
-        <select id="cellsel" aria-label="Cell size"><option value="9">Cell size: small</option><option value="14" selected>Cell size: medium</option><option value="22">Cell size: large, shows each character</option></select>
+      <details class="howto"><summary>How to read the map</summary><p class="sub">One cell per character. Each row is every UTF-8 byte except the last (e.g. <span style="font-family:var(--mono)">E4 B8</span>); each column is the last byte, 80–BF, so a row holds 64 consecutive code points. The same rule covers 2-, 3- and 4-byte characters. A cell is blue when the selected tokenizer has that character as one whole token; otherwise the character is split into pieces of its bytes. A vermilion marker means the row prefix itself is a fragment token, so the characters in that row that aren't whole tokens cost two tokens instead of one per byte.</p></details>
+      <select id="blocksel" hidden aria-hidden="true" tabindex="-1"></select>
+      <select id="cellsel" hidden aria-hidden="true" tabindex="-1"><option value="9">small</option><option value="14" selected>medium</option><option value="22">large</option></select>
+      <div class="mapnav">
+        <div class="crumbs"><button class="btn" id="backov" hidden title="Back to the whole of Unicode (Esc)">← All of Unicode</button><span id="crumbs"></span></div>
+        <div class="scriptchips" id="scriptchips" role="group" aria-label="Scripts"></div>
+        <div class="mapctl">
+          <input type="search" id="blocksearch" list="blocklist" placeholder="Jump to any Unicode block: Tamil, Runic, Emoticons…" aria-label="Jump to a Unicode block">
+          <datalist id="blocklist"></datalist>
+          <div class="seg" id="cellseg" role="radiogroup" aria-label="Cell size"><span>Cells</span><button role="radio" data-v="9" aria-checked="false">S</button><button role="radio" data-v="14" aria-checked="true">M</button><button role="radio" data-v="22" aria-checked="false" title="Large cells show each character">L</button></div>
+        </div>
       </div>
       <div class="rowstats" id="mapstats"></div>
       <div class="mlegend" id="maplegend"><span class="whole">whole token</span><span class="none">split into byte pieces</span><span class="fragrow">row prefix is a fragment token</span><span class="empty">unassigned / outside block</span></div>
@@ -563,15 +591,52 @@ function showGroup(g){
   const sample=[];for(let cp=lo;cp<=hi&&sample.length<8;cp++){const ch=String.fromCodePoint(cp);if(!ByteMap.NONCHAR.test(ch))sample.push(ch);}
   $('#detail').innerHTML=`<div class="big" style="font-size:2rem;letter-spacing:.1em">${sample.join('')}</div><dl><dt>range</dt><dd>${U(lo)}–${hi.toString(16).toUpperCase()}</dd><dt>block</dt><dd>${blk?blk.name:'–'}</dd><dt>bytes</dt><dd>${ByteMap.utf8Len(lo)} per character</dd>${pre.length?`<dt>shared prefix</dt><dd>${hex(pre)} ${O.frag[g]?'<span class="inv">is a fragment token</span>':pre.length>=2?'is not a token':''}</dd>`:''}<dt>whole tokens</dt><dd>${O.whole[g]} / ${O.assigned[g]} characters</dd></dl><p class="sub" style="font-family:var(--sans)">Click to open ${blk?blk.name:'this block'}.</p>`;
 }
+let ovReturn=null; // where the overview was scrolled when we zoomed in, for "back"
 function openGroup(g){
   const blk=ByteMap.blockOf(g<<6); if(!blk)return;
-  $('#blocksel').value=blk.id; pinned=null; drawMap(); writeHash();
+  ovReturn={map:$('#mapscroll').scrollTop,page:window.scrollY};
+  setBlock(blk.id);
   const {cell,gap,headH}=mapInfo; $('#mapscroll').scrollTop=headH+((g-(blk.lo>>6))*(cell+gap))-40;
-  $('#detail').innerHTML='<p class="sub">Hover or tap a cell.</p>';
 }
+function setBlock(id){
+  $('#blocksel').value=id; pinned=null;
+  $('#detail').innerHTML='<p class="sub">Hover or tap a cell.</p>';
+  drawMap(); writeHash();
+}
+function backToOverview(){
+  const r=ovReturn; setBlock('overview');
+  if(r){$('#mapscroll').scrollTop=r.map;window.scrollTo({top:r.page});}
+}
+const SHORTB={ascii:'ASCII',latin:'Latin',greek:'Greek',cyrillic:'Cyrillic',hebrew:'Hebrew',arabic:'Arabic',devanagari:'Devanagari',bengali:'Bengali',thai:'Thai',kana:'Kana',hangul:'Hangul',han:'Han',hanA:'Han Ext A',emoji:'Emoji',hanB:'Han Ext B'};
+(function buildMapNav(){
+  let h='<button data-b="overview" title="Every character in Unicode, one cell per 64">All of Unicode</button>';
+  for(let n=1;n<=4;n++){
+    const f=ByteMap.FEATURED.filter(b=>b.bytes===n); if(!f.length)continue;
+    h+=`<span class="glab">${n} byte${n>1?'s':''}</span>`+f.map(b=>`<button data-b="${b.id}" title="${b.name} — ${b.langs}">${SHORTB[b.id]||b.name}</button>`).join('');
+  }
+  $('#scriptchips').innerHTML=h;
+  const opts=[...ByteMap.FEATURED.map(b=>[b.id,`${b.name} — ${b.langs}`]),...ByteMap.ALL.map(b=>[b.id,`${b.name} · ${U(b.lo)}–${b.hi.toString(16).toUpperCase()}`])];
+  $('#blocklist').innerHTML=opts.map(([,t])=>`<option value="${t.replace(/"/g,'&quot;')}"></option>`).join('');
+  const byText=new Map(opts.map(([id,t])=>[t,id]));
+  $('#blocksearch').addEventListener('change',e=>{const id=byText.get(e.target.value);if(id){ovReturn=null;setBlock(id);e.target.value='';e.target.blur();}});
+  $('#blocksearch').addEventListener('input',e=>{const id=byText.get(e.target.value);if(id){ovReturn=null;setBlock(id);e.target.value='';}});
+})();
+function updateMapNav(){
+  const id=$('#blocksel').value, blk=BLOCK[id], ov=id==='overview';
+  $('#backov').hidden=ov;
+  if(ov)$('#crumbs').innerHTML='<span class="here">All of Unicode</span> <span class="rng">· one cell = 64 characters · click a cell to zoom in</span>';
+  else $('#crumbs').innerHTML=`<span>${BYTES[blk.bytes]} per character</span><span class="sepch">›</span><span class="here">${blk.name}</span> <span class="rng">${U(blk.lo)}–${blk.hi.toString(16).toUpperCase()}</span>`;
+  $('#scriptchips').querySelectorAll('button').forEach(b=>{const f=BLOCK[b.dataset.b];b.setAttribute('aria-pressed',String(b.dataset.b===id||(!!f&&!!blk&&f.lo===blk.lo&&!ByteMap.FEATURED.includes(blk))));});
+  $('#cellseg').querySelectorAll('button').forEach(b=>b.setAttribute('aria-checked',String(b.dataset.v===$('#cellsel').value)));
+}
+$('#scriptchips').addEventListener('click',e=>{const b=e.target.closest('button[data-b]');if(!b)return;if(b.dataset.b==='overview')backToOverview();else{ovReturn=null;setBlock(b.dataset.b);}});
+$('#backov').onclick=backToOverview;
+$('#cellseg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$('#cellsel').value=b.dataset.v;drawMap();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#pane-map').hidden&&$('#blocksel').value!=='overview'&&document.activeElement!==$('#blocksearch'))backToOverview();});
 
 function drawMap(){
   if(!V||$('#pane-map').hidden)return;
+  updateMapNav();
   if($('#blocksel').value==='overview'){drawOverview();return;}
   $('#maplegend').hidden=false;
   const blk=BLOCK[$('#blocksel').value]; const D=blockData(blk);
@@ -633,8 +698,7 @@ $('#map').addEventListener('mousemove',ev=>{
 $('#map').addEventListener('click',ev=>{
   if(mapInfo&&mapInfo.overview){const g=overviewCell(ev);if(g!==null)openGroup(g);return;}
   const cp=cellAt(ev);if(cp===null)return;pinned=(pinned===cp)?null:cp;showDetail(cp);writeHash();});
-$('#blocksel').addEventListener('change',()=>{pinned=null;$('#detail').innerHTML='<p class="sub">Hover or tap a cell.</p>';drawMap();writeHash();});
-$('#cellsel').addEventListener('change',drawMap);
+
 
 /* ---- Coverage ----
    Table: coverage.json (precomputed by scripts/build_coverage.cjs with the same bytemap.js code).
