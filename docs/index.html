@@ -7,97 +7,107 @@
 <title>Byte Pair Lens</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400&display=swap">
 <style>
-/* Layout: a byte inspector. One column, mono-first; the token strip is the hero, breakdown and vocab browser below. */
+/* Layout: a byte inspector in ink on paper. One column, mono-first, hairline rules instead of cards.
+   Single light theme (always white, by request). Monochrome encoding: whole token = outlined, alternating paper/tint; byte fragment = inverted (ink block). */
 :root{
-  --bg:#f6f5f0;--surface:#ffffff;--fg:#1c1b17;--muted:#6b685c;--line:#dad7cc;--accent:#2a5bd7;--frag:#c8451e;--frag-bg:#fbe5dc;--tok-a:#e6e0f5;--tok-b:#dcebdc;--tok-c:#f6e9c8;--tok-d:#d9e8f6;--tok-e:#f3dfe8;
+  --bg:#ffffff;--fg:#111111;--muted:#525252;--line:#d6d6d6;--tint:#f2f2f2;
   --mono:"IBM Plex Mono","SFMono-Regular",Menlo,Consolas,monospace;--sans:"IBM Plex Sans","Helvetica Neue",Arial,sans-serif;--cjk:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;
   color-scheme:light;
 }
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15150f;--surface:#1f1f18;--fg:#ebe8dc;--muted:#9a978a;--line:#33332a;--accent:#7ea3ff;--frag:#ff8a5c;--frag-bg:#3d2016;--tok-a:#33305a;--tok-b:#243a26;--tok-c:#4a3d1a;--tok-d:#1f3550;--tok-e:#4a2438;color-scheme:dark}}
-:root[data-theme="dark"]{--bg:#15150f;--surface:#1f1f18;--fg:#ebe8dc;--muted:#9a978a;--line:#33332a;--accent:#7ea3ff;--frag:#ff8a5c;--frag-bg:#3d2016;--tok-a:#33305a;--tok-b:#243a26;--tok-c:#4a3d1a;--tok-d:#1f3550;--tok-e:#4a2438;color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.5;padding:24px 16px 48px}
-.wrap{max-width:960px;margin:0 auto;display:grid;gap:28px}
-h1{font-family:var(--mono);font-weight:600;font-size:1.5rem;margin:0;letter-spacing:-.01em;text-wrap:balance}
-h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px;font-weight:600}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.6;padding:40px max(16px,env(safe-area-inset-right,0px)) 64px max(16px,env(safe-area-inset-left,0px))}
+.wrap{max-width:960px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1fr);gap:40px}
+.wrap>*,section,[role=tabpanel]>*{min-width:0}
+[role=tabpanel]{display:grid;grid-template-columns:minmax(0,1fr);gap:48px}
+h1{font-family:var(--mono);font-weight:500;font-size:1.6rem;margin:0 0 8px;letter-spacing:-.02em;text-wrap:balance}
+h2{font-family:var(--mono);font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 14px;font-weight:500}
 p{margin:0;max-width:65ch}
-.sub{color:var(--muted);font-size:.9rem}
-header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;font-family:var(--mono);font-size:.8rem}
-.seg button{background:var(--surface);color:var(--fg);border:0;padding:6px 12px;cursor:pointer}
-.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
-.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-textarea{width:100%;min-height:90px;font:1rem/1.6 var(--cjk),var(--sans);background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:10px 12px;resize:vertical}
-textarea:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.stats{display:flex;gap:20px;flex-wrap:wrap;font-family:var(--mono);font-size:.85rem;margin-top:10px;font-variant-numeric:tabular-nums}
-.stats b{font-weight:600;color:var(--accent)}
+.sub{color:var(--muted);font-size:.95rem}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--fg);font-family:var(--mono);font-size:.82rem}
+.seg button{background:var(--bg);color:var(--fg);border:0;padding:6px 12px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--fg)}
+.seg button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.seg button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+textarea{width:100%;min-height:96px;font:1rem/1.6 var(--cjk),var(--sans);background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:0;padding:12px 14px;resize:vertical}
+textarea:focus{border-color:var(--fg)}
+textarea:focus-visible,input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+.stats{display:flex;gap:28px;flex-wrap:wrap;font-family:var(--mono);font-size:.85rem;color:var(--muted);margin-top:16px;font-variant-numeric:tabular-nums}
+.stats b{font-weight:600;color:var(--fg);font-size:1.1rem;margin-left:4px}
 .strip{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;font-family:var(--cjk),var(--mono)}
-.tok{border-radius:4px;padding:2px 6px;border:1px solid transparent;display:flex;flex-direction:column;min-width:0}
-.tok .t{font-size:1.05rem;white-space:pre}
-.tok .b{font-family:var(--mono);font-size:.62rem;color:var(--muted);letter-spacing:.02em}
-.tok.frag{background:var(--frag-bg);border-color:var(--frag)}
-.tok.frag .t{color:var(--frag);font-family:var(--mono);font-size:.8rem}
-.tok.frag .b{color:var(--frag)}
-.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin-top:10px}
-.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;border:1px solid var(--line)}
-.legend .f::before{background:var(--frag-bg);border-color:var(--frag)}
-.legend .w::before{background:var(--tok-a)}
-.samples{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.samples button{font:inherit;font-size:.78rem;background:none;border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--fg);cursor:pointer;font-family:var(--cjk),var(--sans)}
-.samples button:hover{border-color:var(--accent)}
-.bars{display:grid;gap:5px;font-family:var(--mono);font-size:.78rem;font-variant-numeric:tabular-nums}
-.bar{display:grid;grid-template-columns:minmax(120px,170px) 1fr 86px;align-items:center;gap:10px;cursor:pointer;border-radius:4px;padding:2px 4px;border:0;background:none;color:var(--fg);text-align:left;font:inherit}
-.bar:hover,.bar[aria-pressed="true"]{background:var(--surface)}
+.tok{padding:4px 8px;border:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;min-width:0}
+.tok.alt{background:var(--tint)}
+.tok .t{font-size:1.2rem;white-space:pre}
+.tok .b{font-family:var(--mono);font-size:.7rem;color:var(--muted);letter-spacing:.02em}
+.tok.frag{background:var(--fg);border-color:var(--fg)}
+.tok.frag .t{color:var(--bg);font-family:var(--mono);font-size:.95rem}
+.tok.frag .b{color:var(--bg);opacity:.85}
+.legend,.mlegend{display:flex;gap:18px;flex-wrap:wrap;font-size:.85rem;color:var(--muted);margin-top:12px}
+.legend span::before,.mlegend span::before{content:"";display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px;border:1px solid var(--fg)}
+.legend .f::before{background:var(--fg)}
+.legend .w::before{background:var(--bg)}
+.samples{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.samples button{font:inherit;font-size:.85rem;background:none;border:1px solid var(--line);padding:3px 10px;color:var(--muted);cursor:pointer;font-family:var(--cjk),var(--sans)}
+.samples button:hover{border-color:var(--fg);color:var(--fg)}
+.bars{display:grid;gap:4px;font-family:var(--mono);font-size:.82rem;font-variant-numeric:tabular-nums}
+.bar{display:grid;grid-template-columns:minmax(140px,220px) 1fr 124px;align-items:center;gap:10px;cursor:pointer;padding:3px 4px;border:0;background:none;color:var(--fg);text-align:left;font:inherit}
+.bar:hover,.bar[aria-pressed="true"]{background:var(--tint)}
+.bar[aria-pressed="true"] .lab{text-decoration:underline;text-underline-offset:3px}
 .bar .lab{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bar .rail{display:block;height:12px;background:var(--line);border-radius:2px;overflow:hidden;min-width:0}
-.bar .fill{display:block;height:100%;background:var(--accent);transition:width .3s}
-.bar[data-cat="1"] .fill{background:var(--frag)}
+.bar .rail{display:block;height:10px;background:var(--line);overflow:hidden;min-width:0}
+.bar .fill{display:block;height:100%;background:var(--fg);transition:width .3s}
+.bar[data-cat="1"] .fill{background:repeating-linear-gradient(135deg,var(--fg) 0 2px,transparent 2px 4px)}
 .bar .n{text-align:right;color:var(--muted)}
-.hint{font-size:.78rem;color:var(--muted);margin-top:8px}
-.ctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
-input[type=search],select{font:inherit;font-size:.85rem;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+.hint{font-size:.85rem;color:var(--muted);margin-top:12px}
+.ctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+input[type=search],select{font:inherit;font-size:.9rem;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:0;padding:6px 10px}
 input[type=search]{flex:1;min-width:160px;font-family:var(--cjk),var(--mono)}
-.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
-table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:.8rem;font-variant-numeric:tabular-nums}
-th,td{padding:5px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
-th{color:var(--muted);font-weight:500;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em}
-td.txt{font-family:var(--cjk),var(--mono);font-size:.95rem}
-td.hex{color:var(--muted)}
-td.cat{color:var(--muted);font-size:.72rem}
-.pager{display:flex;gap:8px;align-items:center;margin-top:8px;font-family:var(--mono);font-size:.8rem;color:var(--muted)}
-.pager button{font:inherit;background:var(--surface);border:1px solid var(--line);border-radius:4px;color:var(--fg);padding:3px 10px;cursor:pointer}
-.pager button:disabled{opacity:.4;cursor:default}
-.loading{font-family:var(--mono);font-size:.8rem;color:var(--muted)}
-.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-@media (max-width:640px){.two{grid-template-columns:1fr}.bar{grid-template-columns:minmax(90px,120px) 1fr 70px}}
+input[type=search]:focus,select:focus{border-color:var(--fg)}
+.tbl{overflow-x:auto;border-top:1px solid var(--fg)}
+table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:.85rem;font-variant-numeric:tabular-nums}
+th,td{padding:8px 14px 8px 0;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--muted);font-weight:600;font-size:.74rem;text-transform:uppercase;letter-spacing:.1em}
+td.txt{font-family:var(--cjk),var(--mono);font-size:1.05rem}
+td.hex,td.cat{color:var(--muted)}
+td.cat{font-size:.8rem}
+.inv{background:var(--fg);color:var(--bg);padding:0 4px}
+.pager{display:flex;gap:10px;align-items:center;margin-top:12px;font-family:var(--mono);font-size:.85rem;color:var(--muted)}
+.pager button{font:inherit;background:none;border:1px solid var(--line);color:var(--fg);padding:3px 10px;cursor:pointer}
+.pager button:hover:not(:disabled){border-color:var(--fg)}
+.pager button:disabled{opacity:.35;cursor:default}
+.loading{font-family:var(--mono);font-size:.85rem;color:var(--muted)}
+.panel{border-top:1px solid var(--fg);padding-top:14px;min-width:0}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:40px}
+@media (max-width:640px){.two{grid-template-columns:1fr}.bar{grid-template-columns:minmax(90px,120px) 1fr 96px}}
 @media (prefers-reduced-motion:reduce){.bar .fill{transition:none}}
 .ws{opacity:.5}
-.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
-.tabs button{font:600 .85rem var(--mono);background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px;color:var(--muted);cursor:pointer;margin-bottom:-1px}
-.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
-.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.mapwrap{display:grid;grid-template-columns:1fr minmax(220px,280px);gap:16px}
+.num{font-family:var(--mono);font-weight:600;color:var(--fg)}
+#han p+p{margin-top:10px}
+.tabs{display:flex;gap:20px;border-bottom:1px solid var(--line)}
+.tabs button{font:600 .85rem var(--mono);text-transform:uppercase;letter-spacing:.06em;background:none;border:0;border-bottom:1px solid transparent;padding:8px 0;color:var(--muted);cursor:pointer;margin-bottom:-1px}
+.tabs button:hover{color:var(--fg)}
+.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--fg)}
+.mapwrap{display:grid;grid-template-columns:1fr minmax(220px,280px);gap:24px}
+.mapwrap>*{min-width:0}
 @media (max-width:760px){.mapwrap{grid-template-columns:1fr}}
-.mapscroll{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:6px;background:var(--surface);position:relative}
+.mapscroll{overflow:auto;max-height:70vh;border:1px solid var(--line);background:var(--bg);position:relative}
 .mapscroll canvas{display:block;image-rendering:pixelated}
-.mlegend{display:flex;gap:14px;flex-wrap:wrap;font-size:.78rem;color:var(--muted);margin:8px 0}
-.mlegend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
-.mlegend .whole::before{background:var(--accent)}
-.mlegend .fragrow::before{background:var(--frag)}
-.mlegend .none::before{background:var(--line)}
-.detail{font-family:var(--mono);font-size:.8rem;display:grid;gap:6px;align-content:start}
-.detail .big{font-family:var(--cjk);font-size:4rem;line-height:1;text-align:center;padding:12px 0}
-.detail dl{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin:0}
+.mlegend{margin:10px 0}
+.mlegend .whole::before{background:var(--fg)}
+.mlegend .none::before{background:var(--line);border-color:var(--line)}
+.mlegend .fragrow::before{width:3px;background:var(--fg)}
+.detail{font-family:var(--mono);font-size:.88rem;display:grid;gap:8px;align-content:start}
+.detail .big{font-family:var(--cjk);font-size:4.5rem;line-height:1;text-align:center;padding:16px 0;border-bottom:1px solid var(--line)}
+.detail dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:0}
 .detail dt{color:var(--muted)}.detail dd{margin:0;word-break:break-all}
 .detail .split{display:flex;gap:4px;flex-wrap:wrap}
-.detail .split span{padding:2px 6px;border-radius:4px;background:var(--tok-a)}
-.detail .split span.frag{background:var(--frag-bg);color:var(--frag)}
-.rowstats{font-family:var(--mono);font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px}
-.rowstats b{color:var(--accent);font-weight:600}
-footer{font-size:.78rem;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
-footer a{color:var(--accent)}
+.detail .split span{padding:2px 6px;border:1px solid var(--line)}
+.detail .split span.frag{background:var(--fg);border-color:var(--fg);color:var(--bg)}
+.rowstats{font-family:var(--mono);font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:20px;flex-wrap:wrap;margin-bottom:8px}
+.rowstats b{color:var(--fg);font-weight:600}
+footer{font-family:var(--mono);font-size:.8rem;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+footer a{color:var(--fg);text-underline-offset:3px}
 </style>
 </head>
 <body>
@@ -153,7 +163,7 @@ footer a{color:var(--accent)}
     </div>
     <div class="stats" id="stats"></div>
     <div class="strip" id="strip"><span class="loading">loading vocab…</span></div>
-    <div class="legend"><span class="w">whole token (one colour per token)</span><span class="f">byte fragment — not a complete UTF-8 character</span></div>
+    <div class="legend"><span class="w">whole token (alternating shade per token)</span><span class="f">byte fragment — not a complete UTF-8 character</span></div>
   </section>
 
   <div class="two">
@@ -191,7 +201,7 @@ const PAT={
   cl100k_base:/(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+/gu,
   o200k_base:/[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?:'[sS]|'[tT]|'[rR][eE]|'[vV][eE]|'[mM]|'[lL][lL]|'[dD])?|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n\/]*|\s*[\r\n]+|\s+(?!\S)|\s+/gu
 };
-const TOKCOL=['var(--tok-a)','var(--tok-b)','var(--tok-c)','var(--tok-d)','var(--tok-e)'];
+const TOKCOL=['','alt'];
 const cache={}; let V=null, curEnc='cl100k_base';
 const dec=new TextDecoder('utf-8',{fatal:true});
 const encU=new TextEncoder();
@@ -240,7 +250,7 @@ function render(){
   ids.forEach((id,i)=>{
     const b=V.bytes[id], t=V.text[id];
     const d=document.createElement('div'); d.className='tok';
-    if(t===null){d.classList.add('frag');}else{d.style.background=TOKCOL[i%TOKCOL.length];}
+    if(t===null){d.classList.add('frag');}else if(TOKCOL[i%TOKCOL.length]){d.classList.add(TOKCOL[i%TOKCOL.length]);}
     const tt=document.createElement('span');tt.className='t';
     if(t===null){tt.textContent=hex(b);}else{tt.textContent=t.replace(/\n/g,'⏎').replace(/\t/g,'⇥'); if(!t.trim())tt.classList.add('ws');}
     const bb=document.createElement('span');bb.className='b';bb.textContent=(t===null?'fragment · ':'')+'#'+id+' · '+hex(b);
@@ -262,10 +272,10 @@ function renderBars(){
   han.forEach(id=>{const t=V.text[id].trim();if(firstId===null)firstId=id;lens[[...t].length]=(lens[[...t].length]||0)+1;for(const ch of t){const o=ch.codePointAt(0);if((o>=0x3400&&o<=0x9FFF)||o>=0x20000)chars.add(ch)}});
   const common=[...'的一是不了在人有我他这个们中来上大为和国地到以说时要就出会可也你对生能而子那得于着下自之年过发后作里用道行所然家种事成方多经么去法学如都同现当没动面起看定天分还进好小部其些主样理心她本前开但因只从想实日军者意无力它与长把机十民第公此已工使情明性知全三又关点正业外将两高间由问很最重并物手应战向头文体政美相见被利什二等产或新己制身果加西斯月话合回特代内信表化老给世位次度门任常先海通教儿原东声提立及比员解水名真论处走义各入几口认条平系气题活尔更别打女变四神总何电数安少报才结反受目太量再感建务做接必场件计管期市直德资命山金指克许统区保至队形社便空决治展马科司五基眼书非则听白却界达光放强即像难且权思王象完设式色路记南品住告类求据程北边死张该交规万取拉格望觉术领共确传师观清今切院让识候带导争运笑飞风步改收根干造言联持组每济车亲极林服快办议往元英士证近失转夫令准布始怎呢存未远叫台单影具罗字爱击流备兵连调深商算质团集百需价花党华城石级整府离况亚请技际约示复病息究线似官火断精满支视消越器容照须九增研写称企八功吗包片史委乎查轻易早曾除农找装广显吧阿李标谈吃图念六引历首医局突专费号尽另周较注语仅考落青随选奇富答俄七买楼乐局紧'].slice(0,300);
   const covered=common.filter(c=>chars.has(c)).length;
-  $('#han').innerHTML=`<p><b style="color:var(--accent);font-family:var(--mono)">${han.length.toLocaleString()}</b> Han tokens covering <b style="color:var(--accent);font-family:var(--mono)">${chars.size.toLocaleString()}</b> distinct characters as whole tokens.</p>
-  <p style="margin-top:8px">Of the 300 most frequent Chinese characters, <b style="color:var(--accent);font-family:var(--mono)">${covered}</b> have their own token; the other ${300-covered} are split into byte fragments.</p>
-  <p style="margin-top:8px">Token length in characters: ${Object.keys(lens).sort((a,b)=>a-b).map(k=>`<span style="font-family:var(--mono)">${k}→${lens[k]}</span>`).join(', ')}</p>
-  <p style="margin-top:8px">First Han token is rank <span style="font-family:var(--mono)">#${firstId}</span> (${firstId!==null?V.text[firstId].trim():'–'}); the main Chinese block spans U+4E00–9FFF, 20,992 code points.</p>`;
+  $('#han').innerHTML=`<p><b class="num">${han.length.toLocaleString()}</b> Han tokens covering <b class="num">${chars.size.toLocaleString()}</b> distinct characters as whole tokens.</p>
+  <p>Of the 300 most frequent Chinese characters, <b class="num">${covered}</b> have their own token; the other ${300-covered} are split into byte fragments.</p>
+  <p>Token length in characters: ${Object.keys(lens).sort((a,b)=>a-b).map(k=>`<span style="font-family:var(--mono)">${k}→${lens[k]}</span>`).join(', ')}</p>
+  <p>First Han token is rank <span style="font-family:var(--mono)">#${firstId}</span> (${firstId!==null?V.text[firstId].trim():'–'}); the main Chinese block spans U+4E00–9FFF, 20,992 code points.</p>`;
 }
 
 let page=0; const PAGE=50;
@@ -276,7 +286,7 @@ function renderTable(){
   if(sort==='len')ids.sort((a,b)=>V.bytes[b].length-V.bytes[a].length);
   const pages=Math.max(1,Math.ceil(ids.length/PAGE)); page=Math.min(page,pages-1);
   const slice=ids.slice(page*PAGE,(page+1)*PAGE);
-  $('#rows').innerHTML=slice.map(i=>{const t=V.text[i];const shown=t===null?'<span style="color:var(--frag)">'+hex(V.bytes[i])+'</span>':t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'⏎').replace(/\t/g,'⇥').replace(/ /g,'␣');return `<tr><td>${i}</td><td class="txt">${shown}</td><td class="hex">${hex(V.bytes[i])}</td><td>${V.bytes[i].length}B${t!==null?' / '+[...t].length+'ch':''}</td><td class="cat">${V.cats[V.cat[i]]}</td></tr>`}).join('')||'<tr><td colspan="5" style="color:var(--muted)">no tokens match</td></tr>';
+  $('#rows').innerHTML=slice.map(i=>{const t=V.text[i];const shown=t===null?'<span class="inv">'+hex(V.bytes[i])+'</span>':t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'⏎').replace(/\t/g,'⇥').replace(/ /g,'␣');return `<tr><td>${i}</td><td class="txt">${shown}</td><td class="hex">${hex(V.bytes[i])}</td><td>${V.bytes[i].length}B${t!==null?' / '+[...t].length+'ch':''}</td><td class="cat">${V.cats[V.cat[i]]}</td></tr>`}).join('')||'<tr><td colspan="5" style="color:var(--muted)">no tokens match</td></tr>';
   $('#pginfo').textContent=`${ids.length.toLocaleString()} tokens · page ${page+1}/${pages}`;
   $('#prev').disabled=page===0;$('#next').disabled=page>=pages-1;
   $('#bars').querySelectorAll('.bar').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.cat===cat)));
@@ -303,7 +313,7 @@ function drawMap(){
   const W=labelW+64*(cell+gap), H=headH+rows*(cell+gap);
   cv.width=W*dpr; cv.height=H*dpr; cv.style.width=W+'px'; cv.style.height=H+'px';
   const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
-  const cAcc=cssVar('--accent'), cLine=cssVar('--line'), cFrag=cssVar('--frag'), cMuted=cssVar('--muted'), cFg=cssVar('--fg');
+  const cFg=cssVar('--fg'), cLine=cssVar('--line'), cMuted=cssVar('--muted'), cBg=cssVar('--bg'), cAcc=cFg, cFrag=cFg;
   ctx.font=`${Math.min(10,cell)}px ${cssVar('--mono')}`; ctx.fillStyle=cMuted; ctx.textBaseline='middle';
   if(cell>=14)for(let c=0;c<64;c++){ctx.fillText((0x80+c).toString(16).toUpperCase(),labelW+c*(cell+gap)+1,headH/2);}
   let covered=0, fragRows=0;
@@ -317,7 +327,7 @@ function drawMap(){
     for(let c=0;c<64;c++){
       const cp=cp0+c; const whole=V.hanSet.has(cp); if(whole)covered++;
       ctx.fillStyle=whole?cAcc:cLine; ctx.fillRect(labelW+c*(cell+gap),y,cell,cell);
-      if(cell>=22){ctx.fillStyle=whole?'#fff':cFg;ctx.font=`${cell-7}px ${cssVar('--cjk')}`;ctx.textAlign='center';ctx.fillText(String.fromCodePoint(cp),labelW+c*(cell+gap)+cell/2,y+cell/2+1);ctx.textAlign='left';}
+      if(cell>=22){ctx.fillStyle=whole?cBg:cFg;ctx.font=`${cell-7}px ${cssVar('--cjk')}`;ctx.textAlign='center';ctx.fillText(String.fromCodePoint(cp),labelW+c*(cell+gap)+cell/2,y+cell/2+1);ctx.textAlign='left';}
     }
   }
   const total=hi-lo+1;
@@ -333,7 +343,7 @@ function showDetail(cp){
   const ch=String.fromCodePoint(cp), b=encU.encode(ch), whole=V.hanSet.has(cp);
   const ids=encode(ch);
   const split=ids.map(id=>{const t=V.text[id];return `<span class="${t===null?'frag':''}">${t===null?hex(V.bytes[id]):t}<small style="opacity:.7"> #${id}</small></span>`}).join('');
-  $('#detail').innerHTML=`<div class="big">${ch}</div><dl><dt>code point</dt><dd>U+${cp.toString(16).toUpperCase()}</dd><dt>UTF-8</dt><dd>${hex(b)}</dd><dt>UTF-16</dt><dd>${cp.toString(16).toUpperCase().padStart(4,'0').replace(/(..)(..)/,'$1 $2')}</dd><dt>status</dt><dd style="color:${whole?'var(--accent)':'var(--frag)'}">${whole?'whole token':'split into '+ids.length+' tokens'}</dd><dt>encoding</dt><dd class="split">${split}</dd><dt>prefix</dt><dd>${hex(b.subarray(0,2))} ${V.prefixSet.has((b[0]<<8)|b[1])?'is a fragment token':'is not a token'}</dd></dl>${pinned!==null?'<p class="sub" style="font-family:var(--sans)">pinned · click again to unpin</p>':''}`;
+  $('#detail').innerHTML=`<div class="big">${ch}</div><dl><dt>code point</dt><dd>U+${cp.toString(16).toUpperCase()}</dd><dt>UTF-8</dt><dd>${hex(b)}</dd><dt>UTF-16</dt><dd>${cp.toString(16).toUpperCase().padStart(4,'0').replace(/(..)(..)/,'$1 $2')}</dd><dt>status</dt><dd>${whole?'whole token':'<span class="inv">split into '+ids.length+' tokens</span>'}</dd><dt>encoding</dt><dd class="split">${split}</dd><dt>prefix</dt><dd>${hex(b.subarray(0,2))} ${V.prefixSet.has((b[0]<<8)|b[1])?'is a fragment token':'is not a token'}</dd></dl>${pinned!==null?'<p class="sub" style="font-family:var(--sans)">pinned · click again to unpin</p>':''}`;
 }
 $('#map').addEventListener('mousemove',ev=>{if(pinned!==null)return;const cp=cellAt(ev);if(cp!==null)showDetail(cp);});
 $('#map').addEventListener('click',ev=>{const cp=cellAt(ev);if(cp===null)return;pinned=(pinned===cp)?null:cp;showDetail(cp);});
