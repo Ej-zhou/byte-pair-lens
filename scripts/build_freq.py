@@ -1,6 +1,6 @@
 """Character frequencies per featured script, from a fixed Wikipedia sample. Writes docs/freq.json.
 
-Usage:  uv run --with pyarrow --with fsspec --with aiohttp --with requests python build_freq.py
+Usage:  uv run --with pyarrow --with fsspec --with aiohttp --with requests --with opencc python build_freq.py
 
 Method (the same for every script, recorded in the output):
 - Wikipedia dump 20231101 from the Hugging Face dataset `wikimedia/wikipedia` (parquet conversion).
@@ -8,6 +8,9 @@ Method (the same for every script, recorded in the output):
   (each row group is ~1,000 articles), so the sample is not just the oldest articles.
 - Scripts written in several languages (Latin, Cyrillic, Arabic) split the row groups between them
   (at least two per language).
+- Chinese Wikipedia stores mixed Simplified/Traditional text (it converts only on display), so the zh
+  sample is converted to Simplified with OpenCC t2s before counting; otherwise ~18% of Han occurrences
+  are Traditional-only forms (國, 為, 於, ...).
 - Count every character whose code point is in the script's block. Han Extension A/B use the
   Chinese sample. Emoji have no Wikipedia-like corpus and are left without frequencies.
 """
@@ -15,6 +18,7 @@ import json
 from collections import Counter
 from pathlib import Path
 import fsspec
+import opencc
 import pyarrow.parquet as pq
 
 DUMP = '20231101'
@@ -39,6 +43,8 @@ SCRIPTS = {
     'hanB':       (0x20000, 0x2A6DF, ['zh']),
 }
 
+SIMPLIFY = {'zh'}  # languages converted to Simplified before counting
+T2S = opencc.OpenCC('t2s')
 _cache = {}
 
 
@@ -55,7 +61,7 @@ def sample(lang, groups):
         texts = f.read_row_group(g, columns=['text']).column('text').to_pylist()
         articles += len(texts)
         for t in texts:
-            counts.update(t)
+            counts.update(T2S.convert(t) if lang in SIMPLIFY else t)
     _cache[key] = (counts, articles, picks, n)
     print(f'  {lang}: row groups {picks} of {n}, {articles} articles, {sum(counts.values()):,} characters')
     return _cache[key]
@@ -63,7 +69,7 @@ def sample(lang, groups):
 
 def main():
     out = {'source': f'Wikipedia {DUMP} (wikimedia/wikipedia on Hugging Face), {ROW_GROUPS} evenly spaced '
-                     'row groups of the first parquet shard per script, split across its languages',
+                     'row groups of the first parquet shard per script, split across its languages; Chinese converted to Simplified (OpenCC t2s)',
            'scripts': {}}
     for sid, (lo, hi, langs) in SCRIPTS.items():
         per = max(2, ROW_GROUPS // len(langs))  # at least two spread-out row groups per language
