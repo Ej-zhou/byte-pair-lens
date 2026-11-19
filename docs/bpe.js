@@ -102,6 +102,10 @@
     // Tokens for one bare character: its UTF-8 bytes (or the character, for "sp") merged by BPE,
     // with no normalisation, no pre-tokenisation and no leading '▁'. Used by the byte map, so map
     // numbers don't depend on Mistral's start-of-text prefix.
+    // How token `id` was built: replay BPE on its own bytes (or characters, for "sp") and record each
+    // merge. Returns a binary tree {id, left, right} with leaves {id} (bytes/characters), or null when
+    // the token is not reachable by merges (special/added tokens, byte-fallback pieces).
+    V.mergeTree = id => mergeTree(V, id);
     V.splitChar = ch => (V.kind === 'sp' ? bpeSp(V, ch) : bpeBytes(V, utf8.encode(ch)));
     return V;
   }
@@ -149,6 +153,39 @@
   }
 
   // atStart: this segment begins at offset 0 of the input (Metaspace "first" only prefixes there)
+  function mergeTree(V, id) {
+    let nodes;
+    if (V.kind === 'sp') {
+      if (!V.mergeRank) return null;
+      const p = V.pieces[id];
+      nodes = Array.from(p).map(c => ({ id: V.pieceId.get(c), s: c }));
+      if (nodes.some(n => n.id === undefined)) return null;
+      while (nodes.length > 1) {
+        let best = -1, bestRank = Infinity;
+        for (let i = 0; i < nodes.length - 1; i++) {
+          const r = V.mergeRank.get(nodes[i].id * 524288 + nodes[i + 1].id);
+          if (r !== undefined && r < bestRank) { bestRank = r; best = i; }
+        }
+        if (best < 0) return null;
+        const s = nodes[best].s + nodes[best + 1].s;
+        nodes.splice(best, 2, { id: V.pieceId.get(s), s, left: nodes[best], right: nodes[best + 1], rank: bestRank });
+      }
+    } else {
+      const b = V.bytes[id];
+      nodes = Array.from(b, (x, i) => ({ id: V.ranks.get(key(b, i, i + 1)), a: i, e: i + 1 }));
+      while (nodes.length > 1) {
+        let best = -1, bestRank = Infinity;
+        for (let i = 0; i < nodes.length - 1; i++) {
+          const r = V.ranks.get(key(b, nodes[i].a, nodes[i + 1].e));
+          if (r !== undefined && r < bestRank) { bestRank = r; best = i; }
+        }
+        if (best < 0) return null;
+        nodes.splice(best, 2, { id: bestRank, a: nodes[best].a, e: nodes[best + 1].e, left: nodes[best], right: nodes[best + 1] });
+      }
+    }
+    return nodes[0] && nodes[0].id === id ? nodes[0] : null;
+  }
+
   function encodeSegment(V, s, atStart) {
     const ids = [];
     const pre = V.pre;

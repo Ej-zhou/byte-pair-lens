@@ -143,6 +143,21 @@ td.cat{font-size:.8rem}
 .strip.compact .tok{padding:2px 5px}
 .strip.compact .tok .t{font-size:1rem}
 .strip.compact .tok.frag .t{font-size:.8rem}
+#rows tr{cursor:pointer}
+#rows tr:hover td{background:var(--tint)}
+#rows tr.sel td{background:var(--tok-1)}
+.tree{border:1px solid var(--line);padding:12px 14px;margin-top:10px;font-family:var(--mono);font-size:.85rem;overflow-x:auto}
+.tree h3{margin:0 0 8px;font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:500}
+.tree ul{list-style:none;margin:0;padding-left:22px;border-left:1px solid var(--line)}
+.tree>ul{padding-left:0;border-left:0}
+.tree li{margin:3px 0;white-space:nowrap}
+.tree .nd{display:inline-flex;gap:8px;align-items:baseline;padding:1px 6px;border:1px solid var(--tok-edge);background:var(--tok-1)}
+.tree .nd.frag{background:var(--frag);border-color:var(--frag);color:var(--frag-ink)}
+.tree .nd.leaf{background:var(--bg)}
+.tree .nd small{color:var(--muted);font-size:.72rem}
+.tree .nd.frag small{color:var(--frag-ink);opacity:.8}
+.tree .nd.leaf.frag{background:var(--bg);color:var(--frag);border-color:var(--frag)}
+.tree .nd.leaf.frag small{color:var(--frag);opacity:.8}
 footer{font-family:var(--mono);font-size:.8rem;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
 footer a{color:var(--fg);text-underline-offset:3px}
 </style>
@@ -288,13 +303,15 @@ footer a{color:var(--fg);text-underline-offset:3px}
     </div>
     <div class="tbl"><table><thead><tr><th>rank</th><th>token</th><th>bytes</th><th>len</th><th>category</th></tr></thead><tbody id="rows"></tbody></table></div>
     <div class="pager"><button id="prev">‹ prev</button><span id="pginfo"></span><button id="next">next ›</button></div>
+    <p class="hint">Click a token to see how BPE built it, merge by merge.</p>
+    <div id="tree" class="tree" hidden></div>
   </section>
   </div>
 
   <footer>Byte Pair Lens · tokenizers run in your browser and match their reference encoders · <b>Built with Llama</b> · Vocabularies: OpenAI tiktoken (MIT); Qwen3, Mistral (Apache-2.0); Llama 3.1, Gemma 3 and DeepSeek-V3 under their own licences, with their use restrictions: see the <a href="licenses/NOTICE.txt">notice and licences</a>.</footer>
 </div>
 
-<script src="bpe.js?v=aacf01a153ac"></script>
+<script src="bpe.js?v=eafacd255ddf"></script>
 <script src="hfimport.js"></script>
 <script src="bytemap.js?v=7bdd791e8f06"></script>
 <script>
@@ -416,7 +433,7 @@ function renderTable(){
   if(sort==='len')ids.sort((a,b)=>V.bytes[b].length-V.bytes[a].length);
   const pages=Math.max(1,Math.ceil(ids.length/PAGE)); page=Math.min(page,pages-1);
   const slice=ids.slice(page*PAGE,(page+1)*PAGE);
-  $('#rows').innerHTML=slice.map(i=>{const t=V.text[i];const shown=t===null?'<span class="inv">'+hex(V.bytes[i])+'</span>':t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'⏎').replace(/\t/g,'⇥').replace(/ /g,'␣');return `<tr><td>${i}</td><td class="txt">${shown}</td><td class="hex">${hex(V.bytes[i])}</td><td>${V.bytes[i].length}B${t!==null?' / '+[...t].length+'ch':''}</td><td class="cat">${V.cats[V.cat[i]]}</td></tr>`}).join('')||'<tr><td colspan="5" style="color:var(--muted)">no tokens match</td></tr>';
+  $('#rows').innerHTML=slice.map(i=>{const t=V.text[i];const shown=t===null?'<span class="inv">'+hex(V.bytes[i])+'</span>':t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'⏎').replace(/\t/g,'⇥').replace(/ /g,'␣');return `<tr data-id="${i}"><td>${i}</td><td class="txt">${shown}</td><td class="hex">${hex(V.bytes[i])}</td><td>${V.bytes[i].length}B${t!==null?' / '+[...t].length+'ch':''}</td><td class="cat">${V.cats[V.cat[i]]}</td></tr>`}).join('')||'<tr><td colspan="5" style="color:var(--muted)">no tokens match</td></tr>';
   $('#pginfo').textContent=`${ids.length.toLocaleString()} tokens · page ${page+1}/${pages}`;
   $('#prev').disabled=page===0;$('#next').disabled=page>=pages-1;
   $('#bars').querySelectorAll('.bar').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.cat===cat)));
@@ -678,6 +695,24 @@ $('#covscript').addEventListener('change',e=>{covScript=e.target.value;renderCov
 $('#covcsv').addEventListener('click',async()=>{const a=document.createElement('a');a.href=await dataURL('coverage.csv');a.download='byte-pair-lens-coverage.csv';document.body.append(a);a.click();a.remove();});
 window.addEventListener('resize',()=>{if(!$('#pane-cov').hidden&&COV&&FREQ.scripts[covScript])drawCovChart(ByteMap.coverage(V,ByteMap.BLOCK[covScript],FREQ.scripts[covScript]),FREQ.scripts[covScript]);});
 
+/* ---- Merge tree (vocab browser) ---- */
+function treeLabel(id){const t=V.text[id];return t===null?hex(V.bytes[id]):t.replace(/\n/g,'⏎').replace(/\t/g,'⇥').replace(/ /g,'␣');}
+function treeHTML(n,depth){
+  const leaf=!n.left, frag=V.text[n.id]===null;
+  const node=`<span class="nd${leaf?' leaf':''}${frag?' frag':''}">${esc(treeLabel(n.id))}<small>#${n.id}${leaf?' · '+(V.kind==='sp'?'character':'byte '+hex(V.bytes[n.id])):''}</small></span>`;
+  if(leaf)return `<li>${node}</li>`;
+  return `<li>${node}<ul>${treeHTML(n.left,depth+1)}${treeHTML(n.right,depth+1)}</ul></li>`;
+}
+function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+function showTree(id){
+  const T=V.mergeTree(id), el=$('#tree'); el.hidden=false;
+  $('#rows').querySelectorAll('tr').forEach(r=>r.classList.toggle('sel',+r.dataset.id===id));
+  if(!T){el.innerHTML=`<h3>Token #${id} · ${esc(treeLabel(id))}</h3><p class="sub" style="font-family:var(--sans)">This token isn't built by merges: it is ${V.cats[V.cat[id]]==='special / added token'?'a special or added token':'a base symbol (a single byte or character)'}.</p>`;return;}
+  let merges=0;(function c(n){if(n.left){merges++;c(n.left);c(n.right);}})(T);
+  el.innerHTML=`<h3>How token #${id} (${esc(treeLabel(id))}) was built · ${merges} merge${merges===1?'':'s'}</h3><p class="sub" style="font-family:var(--sans);margin-bottom:8px">Read bottom-up: BPE starts from the ${V.kind==='sp'?'characters':'bytes'} at the leaves and joins pairs into the tokens above them.${V.kind==='sp'?'':' Each number is a token id, which for byte-level BPE is also the order the merge was learned.'}</p><ul>${treeHTML(T,0)}</ul>`;
+}
+$('#rows').addEventListener('click',e=>{const tr=e.target.closest('tr[data-id]');if(tr)showTree(+tr.dataset.id);});
+
 /* ---- Your own tokenizer.json (converted in the browser by hfimport.js) ---- */
 $('#ownfile').addEventListener('change',async e=>{
   const f=e.target.files[0]; e.target.value=''; if(!f)return;
@@ -751,7 +786,7 @@ async function switchEnc(enc){
   try{ V=await load(enc); curEnc=enc; }
   finally{ $('#encsel').disabled=false; }
   $('#encsel').value=curEnc;
-  render(); renderBars(); page=0; renderTable(); drawMap(); if(pinned!==null&&!$('#pane-map').hidden)showDetail(pinned); if(!$('#pane-cov').hidden)renderCoverage(); writeHash();
+  render(); renderBars(); page=0; renderTable(); $('#tree').hidden=true; drawMap(); if(pinned!==null&&!$('#pane-map').hidden)showDetail(pinned); if(!$('#pane-cov').hidden)renderCoverage(); writeHash();
 }
 $('#input').addEventListener('input',render);
 $('#samples').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$('#input').value=b.dataset.s;render();});
