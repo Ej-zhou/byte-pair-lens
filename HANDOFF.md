@@ -2,12 +2,11 @@
 
 Target: NAACL 2027 System Demonstrations, deadline **4 Dec 2026 (AoE)**. Submission needs a live URL, a ≤2.5-min video and a ≤6-page paper.
 
-## 1. Hosting (first thing)
+## 1. Hosting (done)
 
-`docs/` is a static site. Options, easiest first:
+Live at **https://ethanpany.github.io/byte-pair-lens/** — GitHub Pages, deploy from branch `master`, folder `/docs`. Every merge to `master` redeploys automatically. Day-to-day work happens on the `ethanpany` branch.
 
-- **GitHub Pages**: repo Settings → Pages → Source: `main`, folder `/docs`. Done. URL will be `https://<owner>.github.io/byte-pair-lens/`.
-- Netlify / Vercel / Cloudflare Pages: point at `docs/`, no build command.
+`byte-pair-lens.vercel.app` is a separate, manual deploy of the original version. It is not connected to this repo and stays untouched until submission.
 
 JSON files total ~5.4 MB; o200k alone is 3.1 MB. Pages serves gzip, which gets it to ~1.5 MB. If that's too slow, see §3.
 

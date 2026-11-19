@@ -4,6 +4,8 @@ Interactive visualiser for how byte-level BPE tokenizers (GPT-2 / GPT-4 / GPT-4o
 
 Everything runs client-side. No build step, no server.
 
+Live: https://ethanpany.github.io/byte-pair-lens/ (deployed automatically from `master`).
+
 ## Layout
 
 ```
