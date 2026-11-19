@@ -17,7 +17,7 @@ OUT = HERE.parent / 'docs'
 
 # name -> (label, official repo, ungated mirror used when the official repo is gated for us)
 MODELS = {
-    'llama3.1':     ('Llama 3.1',    'meta-llama/Llama-3.1-8B',    'unsloth/Llama-3.1-8B'),
+    'llama3.1':     ('Llama 3.1',    'meta-llama/Llama-3.1-8B',    'NousResearch/Meta-Llama-3.1-8B'),
     'qwen3':        ('Qwen3',        'Qwen/Qwen3-8B',              None),
     'deepseek-v3':  ('DeepSeek-V3',  'deepseek-ai/DeepSeek-V3',    None),
     'gemma3':       ('Gemma 3',      'google/gemma-3-4b-it',       'unsloth/gemma-3-4b-it'),
@@ -47,6 +47,25 @@ def fetch(name):
             return path, repo
         print(f'  {repo}: HTTP {code}, trying next source')
     raise SystemExit(f'{name}: no source could be downloaded')
+
+
+def official_oid(repo):
+    """Git object id of tokenizer.json in a repo. Public even for gated repos."""
+    out = subprocess.run(['curl', '-s', f'https://huggingface.co/api/models/{repo}/tree/main'],
+                         capture_output=True, text=True).stdout
+    for f in json.loads(out):
+        if f.get('path') == 'tokenizer.json':
+            return f['oid']
+    return None
+
+
+def git_oid(path):
+    """Git object id of a local file as the hub stores it (LFS files are stored as a pointer)."""
+    data = path.read_bytes()
+    def blob(b):
+        return hashlib.sha1(b'blob %d\0' % len(b) + b).hexdigest()
+    pointer = f'version https://git-lfs.github.com/spec/v1\noid sha256:{hashlib.sha256(data).hexdigest()}\nsize {len(data)}\n'.encode()
+    return {blob(data), blob(pointer)}
 
 
 def byte_decoder():
@@ -97,6 +116,13 @@ def build(name):
     label = MODELS[name][0]
     path, repo = fetch(name)
     sha = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+    official = MODELS[name][1]
+    if repo != official:  # a mirror: only accept it if it is byte-identical to the official file
+        oid = official_oid(official)
+        if oid not in git_oid(path):
+            raise SystemExit(f'{name}: {repo} differs from {official} (official oid {oid})')
+        print(f'  {repo} is byte-identical to {official}')
+        repo = f'{official} (identical copy from {repo})'
     j = json.loads(path.read_text())
     m = j['model']
     assert m.get('type', 'BPE') == 'BPE'

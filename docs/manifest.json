@@ -1,0 +1,56 @@
+{
+ "files": {
+  "cl100k_base.json": {
+   "size": 1493487,
+   "v": "10ca1b8c9e59"
+  },
+  "coverage.csv": {
+   "size": 7075,
+   "v": "31ca80c59a89"
+  },
+  "coverage.json": {
+   "size": 25885,
+   "v": "761ce62bd7e3"
+  },
+  "deepseek-v3.json": {
+   "size": 1961977,
+   "v": "224db35e3374"
+  },
+  "freq.json": {
+   "size": 150182,
+   "v": "1eed4addb134"
+  },
+  "gemma3.json": {
+   "size": 3820014,
+   "v": "12f330cf530e"
+  },
+  "gemma3.merges.json": {
+   "size": 5936149,
+   "v": "f4b1c8dcaa03"
+  },
+  "llama3.1.json": {
+   "size": 1949287,
+   "v": "416ad420af29"
+  },
+  "mistral-v0.3.json": {
+   "size": 398522,
+   "v": "5f20b29bc88b"
+  },
+  "mistral-v0.3.merges.json": {
+   "size": 634532,
+   "v": "a6ccf85adb36"
+  },
+  "o200k_base.json": {
+   "size": 3155478,
+   "v": "e115c5a245d9"
+  },
+  "qwen3.json": {
+   "size": 2260267,
+   "v": "18b26502a651"
+  },
+  "r50k_base.json": {
+   "size": 746637,
+   "v": "4a69c5aeba1f"
+  }
+ }
+}

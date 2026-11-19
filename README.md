@@ -61,14 +61,20 @@ node check_encoder.mjs           # expect N/N match for all three
 | File | Tokenizer | Source | Licence |
 |---|---|---|---|
 | `r50k_base`, `cl100k_base`, `o200k_base` | OpenAI tiktoken | `gpt-tokenizer` npm package | MIT |
-| `llama3.1` | Llama 3.1 | `meta-llama/Llama-3.1-8B` (built from the `unsloth/Llama-3.1-8B` copy) | Llama 3.1 Community License |
+| `llama3.1` | Llama 3.1 | `meta-llama/Llama-3.1-8B` (byte-identical copy from `NousResearch/Meta-Llama-3.1-8B`) | Llama 3.1 Community License |
 | `qwen3` | Qwen3 | `Qwen/Qwen3-8B` | Apache-2.0 |
 | `deepseek-v3` | DeepSeek-V3 | `deepseek-ai/DeepSeek-V3` | DeepSeek model licence |
-| `gemma3` | Gemma 3 | `google/gemma-3-4b-it` (built from the `unsloth/gemma-3-4b-it` copy) | Gemma Terms of Use |
+| `gemma3` | Gemma 3 | `google/gemma-3-4b-it` (byte-identical copy from `unsloth/gemma-3-4b-it`; all Gemma 3 sizes share this file) | Gemma Terms of Use |
 | `mistral-v0.3` | Mistral v0.3 | `mistralai/Mistral-7B-v0.3` | Apache-2.0 |
 
-Each vocab file's `source` field records the repo it was built from and a sha256 prefix of the `tokenizer.json`. Check the Llama, Gemma and DeepSeek licence terms before redistributing.
+Each vocab file's `source` field records the repo it was built from and a sha256 prefix of the `tokenizer.json`. When the official repo is gated, `build_hf_vocab.py` downloads a public copy and refuses it unless its git object id equals the official file's (the hub publishes that id even for gated repos). Check the Llama, Gemma and DeepSeek licence terms before redistributing.
 
 ## Licence
 
-MIT. Vocabulary data is from [tiktoken](https://github.com/openai/tiktoken) (MIT), redistributed via the `gpt-tokenizer` npm package.
+Code: MIT. The vocabulary files keep their own licences; copies and the required notices are in [`docs/licenses/`](docs/licenses/) (also served with the site):
+
+- Llama 3.1: Llama 3.1 Community License ("Built with Llama" is shown in the page footer)
+- Gemma 3: Gemma Terms of Use, including the use restrictions in Section 3.2
+- DeepSeek-V3: DeepSeek License Agreement, including the use-based restrictions in Attachment A
+- Qwen3, Mistral 7B v0.3: Apache-2.0
+- r50k_base, cl100k_base, o200k_base: from [tiktoken](https://github.com/openai/tiktoken) (MIT), redistributed via the `gpt-tokenizer` npm package

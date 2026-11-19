@@ -75,7 +75,7 @@ def oracle_stats(has, ntok):
                 prefixable += 1
                 prefix_rows += has(pre)
             for cp in range(max(lo, row << 6), min(hi, (row << 6) | 63) + 1):
-                if unicodedata.category(chr(cp)) in ('Cn', 'Cs'):
+                if unicodedata.category(chr(cp)) in ('Cn', 'Cs', 'Co'):
                     continue
                 assigned += 1
                 bs = chr(cp).encode()
@@ -107,6 +107,22 @@ def main(names):
                 notes.append(f"{bid}: assigned {g['assigned']} (JS) vs {e['assigned']} (Python), Unicode version difference")
             elif g['tok'] != e['tok']:
                 bad.append(f"{bid}: total tokens {g['tok']} vs {e['tok']}")
+        has = (tiktoken_oracle(name) if name in TIKTOKEN else hf_oracle(name))[0]
+        # Coverage tab: weighted coverage from docs/coverage.json vs the oracle and docs/freq.json
+        freq = json.load(open(DOCS / 'freq.json'))['scripts']
+        cov = {r['script']: r for r in json.load(open(DOCS / 'coverage.json'))['rows'] if r['tokenizer'] == name}
+        for sid, F in freq.items():
+            exp_w = sum(c for cp, c in F['chars'] if has(chr(cp).encode())) / F['total']
+            if abs(cov[sid]['weighted'] - exp_w) > 1e-9:
+                bad.append(f"coverage {sid}: weighted {cov[sid]['weighted']:.6f} vs {exp_w:.6f}")
+        # whole of Unicode (the overview): compare characters assigned in both Unicode versions
+        ow = set(js['_overview']['wholeCps'])
+        py_assigned = [cp for cp in range(0x110000) if not 0xD800 <= cp <= 0xDFFF and unicodedata.category(chr(cp)) not in ('Cn', 'Co')]
+        ew = {cp for cp in py_assigned if has(chr(cp).encode())}
+        ow_common = {cp for cp in ow if unicodedata.category(chr(cp)) not in ('Cn', 'Co')}
+        if ow_common != ew:
+            bad.append(f'overview: whole sets differ ({len(ow_common ^ ew)} chars, e.g. {sorted(ow_common ^ ew)[:3]})')
+        notes.append(f"overview: {js['_overview']['totW']:,} / {js['_overview']['totA']:,} whole (JS, Unicode 17); {len(ew):,} / {len(py_assigned):,} (Python, Unicode {unicodedata.unidata_version})")
         fail += len(bad)
         print(f"{name}: {'OK' if not bad else 'MISMATCH'} across {len(exp)} blocks")
         for line in bad + notes:
