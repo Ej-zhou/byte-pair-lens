@@ -298,7 +298,7 @@ footer a{color:var(--fg);text-underline-offset:3px}
     </section>
     <section>
       <h2 id="covtitle">Characters ranked by how often they appear</h2>
-      <div class="ctl"><select id="covscript" aria-label="Script"></select><span class="hint" style="margin:0">Tokenizer: the one selected at the top of the page.</span></div>
+      <select id="covscript" hidden aria-hidden="true" tabindex="-1"></select><div class="scriptchips" id="covchips" role="group" aria-label="Script" style="margin-bottom:6px"></div><p class="hint" style="margin:0 0 4px">Tokenizer: the one selected at the top of the page (or in the floating bar).</p>
       <p id="covsummary" class="covsum"></p>
       <div class="covchartwrap"><canvas id="covchart" aria-label="Cumulative share of text against frequency rank"></canvas></div>
       <div class="mlegend"><span class="cumall">all characters (share of text so far)</span><span class="whole">characters that are whole tokens</span><span class="none">barcode: each rank, blue if whole</span></div>
@@ -715,6 +715,7 @@ async function loadCoverage(){
   if(COV)return;
   [COV,FREQ]=await Promise.all([getData('coverage.json'),getData('freq.json')]);
   $('#covscript').innerHTML=ByteMap.FEATURED.map(b=>`<option value="${b.id}">${b.name} — ${b.langs}</option>`).join('');
+  $('#covchips').innerHTML=ByteMap.FEATURED.map(b=>`<button data-b="${b.id}" title="${b.name} — ${b.langs}">${SHORTB[b.id]||b.name}</button>`).join('');
 }
 function covCell(enc,sid){return COV.rows.find(r=>r.tokenizer===enc&&r.script===sid);}
 function renderCovTable(){
@@ -768,6 +769,7 @@ function drawCovChart(C,F){
 function renderCovDetail(){
   const blk=ByteMap.BLOCK[covScript], F=FREQ.scripts[covScript];
   $('#covscript').value=covScript;
+  $('#covchips').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.b===covScript)));
   $('#covtitle').textContent=`${blk.name}: characters ranked by how often they appear`;
   const name=$('#encsel').selectedOptions[0].textContent.split(' · ')[0];
   if(!F){$('#covsummary').textContent=`There is no frequency data for ${blk.name.toLowerCase()}: Wikipedia text isn't a fair sample of emoji use. The byte map still shows which emoji ${name} has as whole tokens.`;$('#covchart').getContext('2d').clearRect(0,0,9999,9999);$('#covsplit').innerHTML='';return;}
@@ -791,7 +793,7 @@ $('#covtable').addEventListener('click',e=>{
   if(td.dataset.enc!==curEnc)switchEnc(td.dataset.enc); else{renderCovTable();renderCovDetail();writeHash();}
   $('#covtitle').scrollIntoView({behavior:'smooth',block:'start'});
 });
-$('#covscript').addEventListener('change',e=>{covScript=e.target.value;renderCovTable();renderCovDetail();writeHash();});
+$('#covchips').addEventListener('click',e=>{const b=e.target.closest('button[data-b]');if(!b)return;covScript=b.dataset.b;renderCovTable();renderCovDetail();writeHash();});
 $('#covcsv').addEventListener('click',async()=>{const a=document.createElement('a');a.href=await dataURL('coverage.csv');a.download='byte-pair-lens-coverage.csv';document.body.append(a);a.click();a.remove();});
 window.addEventListener('resize',()=>{if(!$('#pane-cov').hidden&&COV&&FREQ.scripts[covScript])drawCovChart(ByteMap.coverage(V,ByteMap.BLOCK[covScript],FREQ.scripts[covScript]),FREQ.scripts[covScript]);});
 
