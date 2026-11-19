@@ -128,6 +128,21 @@ td.cat{font-size:.8rem}
 .covchartwrap{border:1px solid var(--line);padding:8px 8px 4px}
 .covchartwrap canvas{display:block;width:100%;height:240px}
 .mlegend .cumall::before{background:var(--muted);border-color:var(--muted);height:2px;vertical-align:3px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 4px}
+.chips label{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;border:1px solid var(--line);padding:4px 10px;cursor:pointer;user-select:none}
+.chips label:has(input:checked){border-color:var(--fg);background:var(--tint)}
+.chips label:has(input:disabled){opacity:.45;cursor:default}
+.chips input{accent-color:var(--fg);margin:0}
+.cmprow{border-top:1px solid var(--line);padding:14px 0 6px}
+.cmphead{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;margin-bottom:8px;font-family:var(--mono);font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.cmphead .nm{font-family:var(--sans);font-size:1rem;color:var(--fg);font-weight:600;min-width:200px}
+.cmphead b{color:var(--fg);font-weight:600}
+.cmpbar{flex-basis:100%;height:6px;background:var(--line)}
+.cmpbar span{display:block;height:100%;background:var(--fg)}
+.strip.compact{gap:3px;margin-top:0}
+.strip.compact .tok{padding:2px 5px}
+.strip.compact .tok .t{font-size:1rem}
+.strip.compact .tok.frag .t{font-size:.8rem}
 footer{font-family:var(--mono);font-size:.8rem;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
 footer a{color:var(--fg);text-underline-offset:3px}
 </style>
@@ -165,6 +180,7 @@ footer a{color:var(--fg);text-underline-offset:3px}
     <button role="tab" id="tab-tok" aria-selected="true" aria-controls="pane-tok">Tokenizer</button>
     <button role="tab" id="tab-map" aria-selected="false" aria-controls="pane-map">Byte map</button>
     <button role="tab" id="tab-cov" aria-selected="false" aria-controls="pane-cov">Coverage</button>
+    <button role="tab" id="tab-cmp" aria-selected="false" aria-controls="pane-cmp">Compare</button>
   </div>
 
   <div id="pane-map" role="tabpanel" hidden>
@@ -206,6 +222,25 @@ footer a{color:var(--fg);text-underline-offset:3px}
       <div class="mlegend"><span class="cumall">all characters (share of text so far)</span><span class="whole">characters that are whole tokens</span><span class="none">barcode: each rank, blue if whole</span></div>
       <h2 style="margin-top:20px">Most frequent characters that get split</h2>
       <div class="tbl"><table id="covsplit"></table></div>
+    </section>
+  </div>
+
+  <div id="pane-cmp" role="tabpanel" hidden>
+    <section>
+      <h2>Same text, several tokenizers</h2>
+      <p class="sub" style="margin-bottom:10px">Type once and see how each tokenizer cuts it. Vermilion chips are byte fragments. Hover a chip for its token id and bytes. Pick up to four tokenizers.</p>
+      <textarea id="cmpinput" spellcheck="false" aria-label="Text to compare">今天天气很好。오늘 날씨가 좋다. आज मौसम अच्छा है। The weather is nice today.</textarea>
+      <div class="samples" id="cmpsamples">
+        <button data-s="今天天气很好。오늘 날씨가 좋다. आज मौसम अच्छा है। The weather is nice today.">same sentence, 4 languages</button>
+        <button data-s="我爱你，语言模型。">Chinese</button>
+        <button data-s="龘齉爨靐 𠀀𠀁">rare Hanzi</button>
+        <button data-s="안녕하세요, 만나서 반갑습니다.">Korean</button>
+        <button data-s="مرحبا بالعالم، كيف حالك؟">Arabic</button>
+        <button data-s="नमस्ते दुनिया, आप कैसे हैं?">Hindi</button>
+        <button data-s="😀🎉 👍🏽 👨‍👩‍👧 🇨🇳">emoji</button>
+      </div>
+      <div class="chips" id="cmppick" role="group" aria-label="Tokenizers to compare"></div>
+      <div id="cmprows"></div>
     </section>
   </div>
 
@@ -299,13 +334,17 @@ async function getData(name,onBytes){
   return JSON.parse(await body.text());
 }
 function mb(n){return (n/1048576).toFixed(1)+' MB';}
-async function load(enc){
-  if(cache[enc])return cache[enc];
+// one in-flight promise per tokenizer, so the Tokenizer and Compare tabs never download twice
+function load(enc){
+  if(!cache[enc])cache[enc]=loadNow(enc).catch(e=>{delete cache[enc];throw e;});
+  return cache[enc];
+}
+async function loadNow(enc){
   const label=[...$('#encsel').options].find(o=>o.value===enc)?.textContent.split(' · ')[0]||enc;
   const m=await manifest();
   const files=[enc+'.json'], sp=m.files[enc+'.merges.json']; if(sp)files.push(enc+'.merges.json');
   const total=files.reduce((a,f)=>a+((m.files[f]||{}).size||0),0), got={};
-  const status=t=>{$('#strip').innerHTML='<span class="loading">'+t+'</span>';$('#loadstatus').textContent=t;};
+  const status=t=>{$('#loadstatus').textContent=t;};
   const progress=()=>{const n=files.reduce((a,f)=>a+(got[f]===Infinity?((m.files[f]||{}).size||0):(got[f]||0)),0);status(`Loading ${label} vocabulary… ${total?mb(n)+' of '+mb(total):''}`);};
   progress();
   // vocabulary and merges download in parallel
@@ -315,7 +354,6 @@ async function load(enc){
   const v=BPE.load(j);
   if(v.kind==='sp')v.setMerges(merges);
   $('#loadstatus').textContent='';
-  cache[enc]=v;
   return v;
 }
 const encode=str=>V.encode(str);
@@ -325,16 +363,24 @@ function render(){
   const s=$('#input').value; const ids=encode(s);
   const nbytes=encU.encode(s).length, nchars=[...s].length;
   $('#stats').innerHTML=`<span>chars <b>${nchars}</b></span><span>UTF-8 bytes <b>${nbytes}</b></span><span>tokens <b>${ids.length}</b></span><span>tokens/char <b>${nchars?(ids.length/nchars).toFixed(2):'–'}</b></span>`;
-  const strip=$('#strip'); strip.innerHTML='';
+  fillStrip($('#strip'),V,ids);
+}
+// token chips for one tokenizer; compact = Compare tab (bytes go in the tooltip)
+function fillStrip(strip,Vx,ids,compact){
+  strip.innerHTML='';
+  const frag=document.createDocumentFragment();
   ids.forEach((id,i)=>{
-    const b=V.bytes[id], t=V.text[id];
+    const b=Vx.bytes[id], t=Vx.text[id];
     const d=document.createElement('div'); d.className='tok';
     if(t===null){d.classList.add('frag');}else{d.classList.add(TOKCOL[i%TOKCOL.length]);}
     const tt=document.createElement('span');tt.className='t';
     if(t===null){tt.textContent=hex(b);}else{tt.textContent=t.replace(/\n/g,'⏎').replace(/\t/g,'⇥'); if(!t.trim())tt.classList.add('ws');}
-    const bb=document.createElement('span');bb.className='b';bb.textContent=(t===null?'fragment · ':'')+'#'+id+' · '+hex(b);
-    d.append(tt,bb); strip.append(d);
+    const info=(t===null?'fragment · ':'')+'#'+id+' · '+hex(b);
+    if(compact){d.title=info;d.append(tt);}
+    else{const bb=document.createElement('span');bb.className='b';bb.textContent=info;d.append(tt,bb);}
+    frag.append(d);
   });
+  strip.append(frag);
 }
 
 function renderBars(){
@@ -627,20 +673,54 @@ $('#covscript').addEventListener('change',e=>{covScript=e.target.value;renderCov
 $('#covcsv').addEventListener('click',async()=>{const a=document.createElement('a');a.href=await dataURL('coverage.csv');a.download='byte-pair-lens-coverage.csv';document.body.append(a);a.click();a.remove();});
 window.addEventListener('resize',()=>{if(!$('#pane-cov').hidden&&COV&&FREQ.scripts[covScript])drawCovChart(ByteMap.coverage(V,ByteMap.BLOCK[covScript],FREQ.scripts[covScript]),FREQ.scripts[covScript]);});
 
-const TABS=['tok','map','cov'];
+/* ---- Compare ---- */
+let cmpSel=['cl100k_base','o200k_base','qwen3','gemma3'], cmpBusy=0;
+function encOptions(){return [...$('#encsel').options].map(o=>({enc:o.value,label:o.textContent.split(' · ')[0]}));}
+function renderCmpPick(){
+  $('#cmppick').innerHTML=encOptions().map(({enc,label})=>{const on=cmpSel.includes(enc);return `<label><input type="checkbox" value="${enc}"${on?' checked':''}${!on&&cmpSel.length>=4?' disabled':''}>${label}</label>`;}).join('');
+}
+async function renderCompare(){
+  if($('#pane-cmp').hidden)return;
+  renderCmpPick();
+  const text=$('#cmpinput').value, nchars=[...text].length, job=++cmpBusy;
+  const rows=$('#cmprows');
+  rows.innerHTML=cmpSel.map(e=>`<div class="cmprow" data-enc="${e}"><div class="cmphead"><span class="nm">${encOptions().find(o=>o.enc===e)?.label||e}</span><span class="loading">loading…</span></div></div>`).join('');
+  const loaded=await Promise.all(cmpSel.map(e=>load(e).then(Vx=>({e,Vx}),err=>({e,err:err.message}))));
+  if(job!==cmpBusy)return; // a newer render started
+  const res=loaded.map(r=>{if(r.err)return r;const ids=r.Vx.encode(text);return {...r,ids,frags:ids.filter(id=>r.Vx.text[id]===null).length};});
+  const min=Math.min(...res.filter(r=>r.ids).map(r=>r.ids.length||1));
+  rows.innerHTML='';
+  for(const r of res){
+    const div=document.createElement('div'); div.className='cmprow';
+    const label=encOptions().find(o=>o.enc===r.e)?.label||r.e;
+    if(r.err){div.innerHTML=`<div class="cmphead"><span class="nm">${label}</span><span>could not load: ${r.err}</span></div>`;rows.append(div);continue;}
+    const n=r.ids.length;
+    div.innerHTML=`<div class="cmphead"><span class="nm">${label}</span><span>tokens <b>${n}</b>${n>min?` (${(n/min).toFixed(2)}× the fewest)`:' (fewest)'}</span><span>tokens/char <b>${nchars?(n/nchars).toFixed(2):'–'}</b></span><span>byte fragments <b>${r.frags}</b></span><span class="cmpbar" aria-hidden="true"><span style="width:${(100*min/Math.max(1,n)).toFixed(1)}%"></span></span></div><div class="strip compact"></div>`;
+    fillStrip(div.querySelector('.strip'),r.Vx,r.ids,true);
+    rows.append(div);
+  }
+  writeHash();
+}
+$('#cmppick').addEventListener('change',e=>{const c=e.target;if(c.type!=='checkbox')return;cmpSel=c.checked?[...cmpSel,c.value].slice(0,4):cmpSel.filter(x=>x!==c.value);if(!cmpSel.length)cmpSel=[curEnc];renderCompare();});
+let cmpTimer=null;
+$('#cmpinput').addEventListener('input',()=>{clearTimeout(cmpTimer);cmpTimer=setTimeout(renderCompare,150);});
+$('#cmpsamples').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$('#cmpinput').value=b.dataset.s;renderCompare();});
+
+const TABS=['tok','map','cov','cmp'];
 function currentTab(){return TABS.find(t=>!$('#pane-'+t).hidden)||'tok';}
 function showTab(id,noHash){
   for(const t of TABS){$('#pane-'+t).hidden=t!==id;$('#tab-'+t).setAttribute('aria-selected',String(t===id));}
   if(id==='map')drawMap();
   if(id==='cov')renderCoverage();
+  if(id==='cmp')renderCompare();
   if(V&&!noHash)writeHash();
 }
 for(const t of TABS)$('#tab-'+t).onclick=()=>showTab(t);
-{const h=readHash(); if(h.block&&(BLOCK[h.block]||h.block==='overview'))$('#blocksel').value=h.block; if(h.cp&&/^[0-9A-F]+$/i.test(h.cp))pinned=parseInt(h.cp,16); if(h.script)covScript=h.script; if(TABS.includes(h.tab))showTab(h.tab,true);}
+{const h=readHash(); if(h.block&&(BLOCK[h.block]||h.block==='overview'))$('#blocksel').value=h.block; if(h.cp&&/^[0-9A-F]+$/i.test(h.cp))pinned=parseInt(h.cp,16); if(h.script)covScript=h.script; if(h.cmp){const ok=h.cmp.split(',').filter(e=>[...$('#encsel').options].some(o=>o.value===e)).slice(0,4);if(ok.length)cmpSel=ok;} if(TABS.includes(h.tab))showTab(h.tab,true);}
 
 // URL state: #enc=qwen3&tab=map (a bare #map still opens the map)
 function readHash(){const h={};for(const kv of location.hash.slice(1).split('&')){if(!kv)continue;const [k,v]=kv.split('=');h[k]=v===undefined?'':decodeURIComponent(v);}if('map' in h)h.tab='map';return h;}
-function writeHash(){const tab=currentTab();let h='#enc='+curEnc;if(tab==='map'){h+='&tab=map&block='+$('#blocksel').value;if(pinned!==null)h+='&cp='+pinned.toString(16).toUpperCase();}if(tab==='cov')h+='&tab=cov&script='+covScript;history.replaceState(null,'','#'+h.slice(1));}
+function writeHash(){const tab=currentTab();let h='#enc='+curEnc;if(tab==='map'){h+='&tab=map&block='+$('#blocksel').value;if(pinned!==null)h+='&cp='+pinned.toString(16).toUpperCase();}if(tab==='cov')h+='&tab=cov&script='+covScript;if(tab==='cmp')h+='&tab=cmp&cmp='+cmpSel.join(',');history.replaceState(null,'','#'+h.slice(1));}
 async function switchEnc(enc){
   $('#encsel').value=enc; $('#encsel').disabled=true;
   try{ V=await load(enc); curEnc=enc; }
