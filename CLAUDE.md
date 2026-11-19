@@ -33,7 +33,7 @@ cd scripts && node check_import.cjs        # hfimport.js (browser upload) == the
 cd scripts && python3 check_map.py [name] # bytemap.js vs an independent recount: 15 blocks, whole-Unicode overview, coverage.json
 
 # Coverage tab data (rerun after changing vocabs or freq.json)
-cd scripts && uv run --with pyarrow --with fsspec --with aiohttp --with requests python build_freq.py  # docs/freq.json from Wikipedia 20231101
+cd scripts && uv run --with pyarrow --with fsspec --with aiohttp --with requests --with opencc python build_freq.py  # docs/freq.json from Wikipedia 20231101 (zh converted to Simplified)
 cd scripts && node build_coverage.cjs     # docs/coverage.json + docs/coverage.csv
 cd scripts && python3 build_blocks.py     # Unicode block list inside docs/bytemap.js
 
