@@ -487,7 +487,40 @@
     return (V.overview = { assigned, whole, frag, totA, totW });
   }
 
-  const api = { FEATURED, ALL, BLOCK, blockOf, utf8Len, NONCHAR, vocabKeys, rowPrefix, isTextToken, isFragmentPrefix, blockData, assignedGroups, overviewData };
+  // Coverage of real text for one script: F is freq.json's entry ({total, chars: [[cp, count], ...]},
+  // most frequent first). Characters are measured on their own, as in the map.
+  const TOP = 1000;
+  function coverage(V, blk, F) {
+    V.covCache = V.covCache || {};
+    if (V.covCache[blk.id]) return V.covCache[blk.id];
+    const D = blockData(V, blk);
+    const res = { wholeAll: D.assigned ? D.whole / D.assigned : 0, assigned: D.assigned, whole: D.whole };
+    if (F && F.chars.length) {
+      const keys = vocabKeys(V);
+      const n = F.chars.length, isWhole = new Uint8Array(n), ntok = new Uint8Array(n);
+      let wF = 0, tF = 0, topW = 0;
+      F.chars.forEach(([cp, c], i) => {
+        const ch = String.fromCodePoint(cp), b = utf8.encode(ch);
+        const w = keys.has(BPE.key(b, 0, b.length));
+        const t = w ? 1 : V.splitChar(ch).length;
+        isWhole[i] = w ? 1 : 0;
+        ntok[i] = Math.min(255, t);
+        if (w) wF += c;
+        tF += c * t;
+        if (i < TOP && w) topW++;
+      });
+      Object.assign(res, {
+        distinct: n, occurrences: F.total,
+        weighted: wF / F.total,           // share of characters in running text that are whole tokens
+        topN: Math.min(TOP, n), topWhole: topW / Math.min(TOP, n),
+        tokPerChar: tF / F.total,         // tokens per character in running text (each character alone)
+        isWhole, ntok,
+      });
+    }
+    return (V.covCache[blk.id] = res);
+  }
+
+  const api = { FEATURED, ALL, BLOCK, blockOf, utf8Len, NONCHAR, vocabKeys, rowPrefix, isTextToken, isFragmentPrefix, blockData, assignedGroups, overviewData, coverage, TOP };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ByteMap = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

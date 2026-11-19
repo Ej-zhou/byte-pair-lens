@@ -107,8 +107,15 @@ def main(names):
                 notes.append(f"{bid}: assigned {g['assigned']} (JS) vs {e['assigned']} (Python), Unicode version difference")
             elif g['tok'] != e['tok']:
                 bad.append(f"{bid}: total tokens {g['tok']} vs {e['tok']}")
-        # whole of Unicode (the overview): compare characters assigned in both Unicode versions
         has = (tiktoken_oracle(name) if name in TIKTOKEN else hf_oracle(name))[0]
+        # Coverage tab: weighted coverage from docs/coverage.json vs the oracle and docs/freq.json
+        freq = json.load(open(DOCS / 'freq.json'))['scripts']
+        cov = {r['script']: r for r in json.load(open(DOCS / 'coverage.json'))['rows'] if r['tokenizer'] == name}
+        for sid, F in freq.items():
+            exp_w = sum(c for cp, c in F['chars'] if has(chr(cp).encode())) / F['total']
+            if abs(cov[sid]['weighted'] - exp_w) > 1e-9:
+                bad.append(f"coverage {sid}: weighted {cov[sid]['weighted']:.6f} vs {exp_w:.6f}")
+        # whole of Unicode (the overview): compare characters assigned in both Unicode versions
         ow = set(js['_overview']['wholeCps'])
         py_assigned = [cp for cp in range(0x110000) if not 0xD800 <= cp <= 0xDFFF and unicodedata.category(chr(cp)) not in ('Cn', 'Co')]
         ew = {cp for cp in py_assigned if has(chr(cp).encode())}

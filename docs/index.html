@@ -108,6 +108,25 @@ td.cat{font-size:.8rem}
 .detail .split span.frag{background:var(--frag);border-color:var(--frag);color:var(--frag-ink)}
 .rowstats{font-family:var(--mono);font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:20px;flex-wrap:wrap;margin-bottom:8px}
 .rowstats b{color:var(--fg);font-weight:600}
+.pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.pills button{font:inherit;font-size:.85rem;background:var(--bg);color:var(--muted);border:1px solid var(--line);padding:5px 12px;cursor:pointer}
+.pills button:hover{border-color:var(--fg);color:var(--fg)}
+.pills button[aria-checked="true"]{background:var(--fg);border-color:var(--fg);color:var(--bg)}
+.covtbl table{font-size:.85rem}
+.covtbl th{cursor:pointer;white-space:nowrap}
+.covtbl th[aria-sort]::after{content:" ↓"}
+.covtbl td.v{text-align:right;cursor:pointer;min-width:72px;border-left:2px solid var(--bg)}
+.covtbl td.v:hover{outline:2px solid var(--fg);outline-offset:-2px}
+.covtbl td.v.sel{outline:2px solid var(--frag);outline-offset:-2px}
+.covtbl td.sname{font-family:var(--sans)}
+.covtbl td.sname small{display:block;color:var(--muted);font-size:.75rem}
+.covfoot{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.btn{font:inherit;font-size:.85rem;background:var(--bg);color:var(--fg);border:1px solid var(--fg);padding:5px 12px;cursor:pointer}
+.btn:hover{background:var(--fg);color:var(--bg)}
+.covsum{font-size:1rem;max-width:70ch;margin:8px 0 12px}
+.covchartwrap{border:1px solid var(--line);padding:8px 8px 4px}
+.covchartwrap canvas{display:block;width:100%;height:240px}
+.mlegend .cumall::before{background:var(--muted);border-color:var(--muted);height:2px;vertical-align:3px}
 footer{font-family:var(--mono);font-size:.8rem;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
 footer a{color:var(--fg);text-underline-offset:3px}
 </style>
@@ -143,6 +162,7 @@ footer a{color:var(--fg);text-underline-offset:3px}
   <div class="tabs" role="tablist">
     <button role="tab" id="tab-tok" aria-selected="true" aria-controls="pane-tok">Tokenizer</button>
     <button role="tab" id="tab-map" aria-selected="false" aria-controls="pane-map">Byte map</button>
+    <button role="tab" id="tab-cov" aria-selected="false" aria-controls="pane-cov">Coverage</button>
   </div>
 
   <div id="pane-map" role="tabpanel" hidden>
@@ -160,6 +180,30 @@ footer a{color:var(--fg);text-underline-offset:3px}
         <div class="mapscroll" id="mapscroll"><canvas id="map"></canvas></div>
         <div class="detail" id="detail"><p class="sub">Hover or tap a cell.</p></div>
       </div>
+    </section>
+  </div>
+
+  <div id="pane-cov" role="tabpanel" hidden>
+    <section>
+      <h2>How much real text each tokenizer keeps whole</h2>
+      <p class="sub" style="margin-bottom:12px">Characters are weighted by how often they appear in a fixed Wikipedia sample, so common characters count more than rare ones. Each character is measured on its own, as in the byte map. Click a cell to see that script in detail.</p>
+      <div class="pills" role="radiogroup" aria-label="Metric" id="covmetric">
+        <button role="radio" aria-checked="true" data-m="weighted">Share of real text that is whole tokens</button>
+        <button role="radio" aria-checked="false" data-m="topWhole">Most frequent 1,000 characters</button>
+        <button role="radio" aria-checked="false" data-m="wholeAll">Every character in the block</button>
+        <button role="radio" aria-checked="false" data-m="tokPerChar">Tokens per character in real text</button>
+      </div>
+      <div class="tbl covtbl"><table id="covtable"><tbody><tr><td class="loading">loading coverage table…</td></tr></tbody></table></div>
+      <div class="covfoot"><p class="hint" id="covnote"></p><button id="covcsv" class="btn">Download CSV</button></div>
+    </section>
+    <section>
+      <h2 id="covtitle">Characters ranked by how often they appear</h2>
+      <div class="ctl"><select id="covscript" aria-label="Script"></select><span class="hint" style="margin:0">Tokenizer: the one selected at the top of the page.</span></div>
+      <p id="covsummary" class="covsum"></p>
+      <div class="covchartwrap"><canvas id="covchart" aria-label="Cumulative share of text against frequency rank"></canvas></div>
+      <div class="mlegend"><span class="cumall">all characters (share of text so far)</span><span class="whole">characters that are whole tokens</span><span class="none">barcode: each rank, blue if whole</span></div>
+      <h2 style="margin-top:20px">Most frequent characters that get split</h2>
+      <div class="tbl"><table id="covsplit"></table></div>
     </section>
   </div>
 
@@ -446,25 +490,123 @@ $('#map').addEventListener('click',ev=>{
 $('#blocksel').addEventListener('change',()=>{pinned=null;$('#detail').innerHTML='<p class="sub">Hover or tap a cell.</p>';drawMap();writeHash();});
 $('#cellsel').addEventListener('change',drawMap);
 
-function showTab(id){
-  const map=id==='map';
-  $('#pane-map').hidden=!map; $('#pane-tok').hidden=map;
-  $('#tab-map').setAttribute('aria-selected',String(map)); $('#tab-tok').setAttribute('aria-selected',String(!map));
-  if(map)drawMap();
-  if(V)writeHash();
+/* ---- Coverage ----
+   Table: coverage.json (precomputed by scripts/build_coverage.cjs with the same bytemap.js code).
+   Detail: computed live for the selected tokenizer from freq.json. */
+let COV=null, FREQ=null, covMetric='weighted', covScript='han', covSort=null;
+// shade is cubed so 90% and 100% look different (most cells are above 80%)
+const METRIC={
+  weighted:{label:'share of real text that is whole tokens',fmt:v=>(100*v).toFixed(1)+'%',shade:v=>v*v*v},
+  topWhole:{label:'share of the most frequent 1,000 characters that are whole tokens',fmt:v=>(100*v).toFixed(1)+'%',shade:v=>v*v*v},
+  wholeAll:{label:'share of every character in the block that is a whole token',fmt:v=>(100*v).toFixed(1)+'%',shade:v=>v*v*v},
+  tokPerChar:{label:'tokens per character in real text (1.00 is best)',fmt:v=>v.toFixed(2),shade:v=>Math.max(0,Math.min(1,(4-v)/3))},
+};
+async function loadCoverage(){
+  if(COV)return;
+  const [a,b]=await Promise.all([fetch('coverage.json'),fetch('freq.json')]);
+  if(!a.ok||!b.ok)throw new Error('could not load coverage data');
+  COV=await a.json(); FREQ=await b.json();
+  $('#covscript').innerHTML=ByteMap.FEATURED.map(b=>`<option value="${b.id}">${b.name} — ${b.langs}</option>`).join('');
 }
-$('#tab-map').onclick=()=>showTab('map'); $('#tab-tok').onclick=()=>showTab('tok');
-{const h=readHash(); if(h.block&&(BLOCK[h.block]||h.block==='overview'))$('#blocksel').value=h.block; if(h.cp&&/^[0-9A-F]+$/i.test(h.cp))pinned=parseInt(h.cp,16); if(h.tab==='map')$('#pane-map').hidden=false,$('#pane-tok').hidden=true,$('#tab-map').setAttribute('aria-selected','true'),$('#tab-tok').setAttribute('aria-selected','false');}
+function covCell(enc,sid){return COV.rows.find(r=>r.tokenizer===enc&&r.script===sid);}
+function renderCovTable(){
+  const M=METRIC[covMetric], toks=COV.tokenizers;
+  let scripts=ByteMap.FEATURED.slice();
+  if(covSort){const v=b=>{const r=covCell(covSort,b.id);return r&&r[covMetric]!==null?r[covMetric]:-1;};scripts.sort((a,b)=>covMetric==='tokPerChar'?v(a)-v(b):v(b)-v(a));}
+  const few=sid=>FREQ.scripts[sid]&&FREQ.scripts[sid].total<10000;
+  let h='<thead><tr><th>script</th>'+toks.map(([e,sh])=>`<th data-enc="${e}"${covSort===e?' aria-sort="descending"':''} title="sort by ${sh}">${sh}</th>`).join('')+'</tr></thead><tbody>';
+  for(const b of scripts){
+    h+=`<tr><td class="sname">${b.name}${few(b.id)?' †':''}<small>${b.langs}</small></td>`;
+    for(const [e] of toks){
+      const r=covCell(e,b.id), v=r?r[covMetric]:null;
+      if(v===null||v===undefined){h+=`<td class="v" data-enc="${e}" data-s="${b.id}" style="color:var(--muted)">–</td>`;continue;}
+      const a=M.shade(v), dark=a>0.55;
+      h+=`<td class="v${e===curEnc&&b.id===covScript?' sel':''}" data-enc="${e}" data-s="${b.id}" style="background:color-mix(in srgb,var(--whole) ${(a*100).toFixed(0)}%,var(--bg));color:${dark?'var(--bg)':'var(--fg)'}">${M.fmt(v)}</td>`;
+    }
+    h+='</tr>';
+  }
+  $('#covtable').innerHTML=h+'</tbody>';
+  $('#covnote').innerHTML=`Showing the ${M.label}. Frequencies: ${COV.source}. – = no frequency data (emoji). † = fewer than 10,000 occurrences in the sample, so treat weighted numbers as rough. Click a column header to sort.`;
+}
+function drawCovChart(C,F){
+  const cv=$('#covchart'), W=Math.max(300,cv.clientWidth), H=240, dpr=window.devicePixelRatio||1;
+  cv.width=W*dpr; cv.height=H*dpr; const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
+  const cFg=cssVar('--fg'), cLine=cssVar('--line'), cMuted=cssVar('--muted'), cAcc=cssVar('--whole'), mono=cssVar('--mono');
+  const L=40, R=12, T=10, B=46, bar=12, n=F.chars.length, pw=W-L-R, ph=H-T-B-bar-6;
+  const lx=r=>L+(n>1?Math.log10(r)/Math.log10(n):0)*pw; // rank (1-based), log scale
+  ctx.clearRect(0,0,W,H); ctx.font=`10px ${mono}`; ctx.textBaseline='middle';
+  // grid
+  ctx.strokeStyle=cLine; ctx.fillStyle=cMuted; ctx.lineWidth=1;
+  for(const y of [0,.25,.5,.75,1]){const py=T+ph*(1-y);ctx.beginPath();ctx.moveTo(L,py);ctx.lineTo(L+pw,py);ctx.stroke();ctx.fillText((100*y)+'%',4,py);}
+  ctx.textAlign='center';
+  for(let k=1;k<=n;k*=10){const px=lx(k);ctx.beginPath();ctx.moveTo(px,T);ctx.lineTo(px,T+ph);ctx.stroke();ctx.fillText(k.toLocaleString(),px,H-B+bar+18);}
+  ctx.fillText('frequency rank (log scale): 1 = most common character',L+pw/2,H-8); ctx.textAlign='left';
+  // cumulative lines
+  let all=0, whole=0; const ptsA=[], ptsW=[];
+  F.chars.forEach(([,c],i)=>{all+=c; if(C.isWhole[i])whole+=c; ptsA.push([lx(i+1),T+ph*(1-all/F.total)]); ptsW.push([lx(i+1),T+ph*(1-whole/F.total)]);});
+  const line=(pts,col,w)=>{ctx.strokeStyle=col;ctx.lineWidth=w;ctx.beginPath();pts.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.stroke();};
+  ctx.globalAlpha=.12; ctx.fillStyle=cAcc; ctx.beginPath(); ctx.moveTo(ptsW[0][0],T+ph); ptsW.forEach(([x,y])=>ctx.lineTo(x,y)); ctx.lineTo(ptsW[ptsW.length-1][0],T+ph); ctx.fill(); ctx.globalAlpha=1;
+  line(ptsA,cMuted,1.5); line(ptsW,cAcc,2.5);
+  // end labels
+  ctx.fillStyle=cAcc; ctx.beginPath(); ctx.arc(ptsW[ptsW.length-1][0],ptsW[ptsW.length-1][1],3.5,0,7); ctx.fill();
+  // barcode: per pixel column, the share of ranks in it that are whole
+  const by=H-B+4;
+  for(let px=0;px<pw;px++){
+    const r0=Math.max(1,Math.floor(Math.pow(n,px/pw))), r1=Math.max(r0,Math.floor(Math.pow(n,(px+1)/pw))-1);
+    let w=0,t=0; for(let r=r0;r<=Math.min(r1,n);r++){t++;w+=C.isWhole[r-1];}
+    if(!t)continue; ctx.fillStyle=cLine; ctx.fillRect(L+px,by,1,bar); ctx.globalAlpha=w/t; ctx.fillStyle=cAcc; ctx.fillRect(L+px,by,1,bar); ctx.globalAlpha=1;
+  }
+}
+function renderCovDetail(){
+  const blk=ByteMap.BLOCK[covScript], F=FREQ.scripts[covScript];
+  $('#covscript').value=covScript;
+  $('#covtitle').textContent=`${blk.name}: characters ranked by how often they appear`;
+  const name=$('#encsel').selectedOptions[0].textContent.split(' · ')[0];
+  if(!F){$('#covsummary').textContent=`There is no frequency data for ${blk.name.toLowerCase()}: Wikipedia text isn't a fair sample of emoji use. The byte map still shows which emoji ${name} has as whole tokens.`;$('#covchart').getContext('2d').clearRect(0,0,9999,9999);$('#covsplit').innerHTML='';return;}
+  const C=ByteMap.coverage(V,blk,F);
+  const splitIdx=[];for(let i=0;i<F.chars.length&&splitIdx.length<20;i++)if(!C.isWhole[i])splitIdx.push(i);
+  const first=splitIdx.length?splitIdx[0]:-1;
+  const pc=v=>(100*v).toFixed(1)+'%';
+  $('#covsummary').innerHTML=`In ${name}, <b>${pc(C.weighted)}</b> of the ${blk.name} characters in the sample are whole tokens, and <b>${pc(C.topWhole)}</b> of the ${C.topN.toLocaleString()} most frequent ones are. A character costs <b>${C.tokPerChar.toFixed(2)}</b> tokens on average.`+(first>=0?` The most frequent character that gets split is <b style="font-family:var(--cjk)">${String.fromCodePoint(F.chars[first][0])}</b> (rank ${first+1}, ${(100*F.chars[first][1]/F.total).toFixed(3)}% of the text).`:' Every character in the sample is a whole token.')+(F.total<10000?` <i>Only ${F.total} occurrences in the sample, so these numbers are rough.</i>`:'');
+  drawCovChart(C,F);
+  $('#covsplit').innerHTML=splitIdx.length?'<thead><tr><th>rank</th><th>char</th><th>share of text</th><th>tokens</th><th>pieces</th></tr></thead><tbody>'+splitIdx.map(i=>{const [cp,c]=F.chars[i];const ch=String.fromCodePoint(cp);const ids=V.splitChar(ch);return `<tr><td>${i+1}</td><td class="txt">${ch}</td><td>${(100*c/F.total).toFixed(3)}%</td><td>${ids.length}</td><td>${ids.map(id=>V.text[id]===null?'<span class="inv">'+hex(V.bytes[id])+'</span>':V.text[id]).join(' ')}</td></tr>`;}).join('')+'</tbody>':'<tbody><tr><td class="hint">None: every character in the sample is a whole token.</td></tr></tbody>';
+}
+async function renderCoverage(){
+  if($('#pane-cov').hidden||!V)return;
+  try{await loadCoverage();}catch(e){$('#covtable').innerHTML=`<tbody><tr><td>${e.message}</td></tr></tbody>`;return;}
+  renderCovTable(); renderCovDetail();
+}
+$('#covmetric').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;covMetric=b.dataset.m;$('#covmetric').querySelectorAll('button').forEach(x=>x.setAttribute('aria-checked',String(x===b)));renderCovTable();});
+$('#covtable').addEventListener('click',e=>{
+  const th=e.target.closest('th[data-enc]'); if(th){covSort=covSort===th.dataset.enc?null:th.dataset.enc;renderCovTable();return;}
+  const td=e.target.closest('td.v'); if(!td)return; covScript=td.dataset.s;
+  if(td.dataset.enc!==curEnc)switchEnc(td.dataset.enc); else{renderCovTable();renderCovDetail();writeHash();}
+  $('#covtitle').scrollIntoView({behavior:'smooth',block:'start'});
+});
+$('#covscript').addEventListener('change',e=>{covScript=e.target.value;renderCovTable();renderCovDetail();writeHash();});
+$('#covcsv').addEventListener('click',()=>{const a=document.createElement('a');a.href='coverage.csv';a.download='byte-pair-lens-coverage.csv';document.body.append(a);a.click();a.remove();});
+window.addEventListener('resize',()=>{if(!$('#pane-cov').hidden&&COV&&FREQ.scripts[covScript])drawCovChart(ByteMap.coverage(V,ByteMap.BLOCK[covScript],FREQ.scripts[covScript]),FREQ.scripts[covScript]);});
+
+const TABS=['tok','map','cov'];
+function currentTab(){return TABS.find(t=>!$('#pane-'+t).hidden)||'tok';}
+function showTab(id,noHash){
+  for(const t of TABS){$('#pane-'+t).hidden=t!==id;$('#tab-'+t).setAttribute('aria-selected',String(t===id));}
+  if(id==='map')drawMap();
+  if(id==='cov')renderCoverage();
+  if(V&&!noHash)writeHash();
+}
+for(const t of TABS)$('#tab-'+t).onclick=()=>showTab(t);
+{const h=readHash(); if(h.block&&(BLOCK[h.block]||h.block==='overview'))$('#blocksel').value=h.block; if(h.cp&&/^[0-9A-F]+$/i.test(h.cp))pinned=parseInt(h.cp,16); if(h.script)covScript=h.script; if(TABS.includes(h.tab))showTab(h.tab,true);}
 
 // URL state: #enc=qwen3&tab=map (a bare #map still opens the map)
 function readHash(){const h={};for(const kv of location.hash.slice(1).split('&')){if(!kv)continue;const [k,v]=kv.split('=');h[k]=v===undefined?'':decodeURIComponent(v);}if('map' in h)h.tab='map';return h;}
-function writeHash(){const map=!$('#pane-map').hidden;let h='#enc='+curEnc;if(map){h+='&tab=map&block='+$('#blocksel').value;if(pinned!==null)h+='&cp='+pinned.toString(16).toUpperCase();}history.replaceState(null,'','#'+h.slice(1));}
+function writeHash(){const tab=currentTab();let h='#enc='+curEnc;if(tab==='map'){h+='&tab=map&block='+$('#blocksel').value;if(pinned!==null)h+='&cp='+pinned.toString(16).toUpperCase();}if(tab==='cov')h+='&tab=cov&script='+covScript;history.replaceState(null,'','#'+h.slice(1));}
 async function switchEnc(enc){
   $('#encsel').value=enc; $('#encsel').disabled=true;
   try{ V=await load(enc); curEnc=enc; }
   finally{ $('#encsel').disabled=false; }
   $('#encsel').value=curEnc;
-  render(); renderBars(); page=0; renderTable(); drawMap(); if(pinned!==null&&!$('#pane-map').hidden)showDetail(pinned); writeHash();
+  render(); renderBars(); page=0; renderTable(); drawMap(); if(pinned!==null&&!$('#pane-map').hidden)showDetail(pinned); if(!$('#pane-cov').hidden)renderCoverage(); writeHash();
 }
 $('#input').addEventListener('input',render);
 $('#samples').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$('#input').value=b.dataset.s;render();});

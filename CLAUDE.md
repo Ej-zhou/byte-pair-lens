@@ -29,7 +29,12 @@ cd scripts && python3 build_hf_vocab.py [name ...]
 # checks: all must pass before merging; each exits 1 on mismatch
 cd scripts && node check_encoder.mjs      # bpe.js vs tiktoken, 3 tokenizers
 cd scripts && python3 check_hf.py [name]  # bpe.js vs Hugging Face tokenizers, 30 strings each
-cd scripts && python3 check_map.py [name] # bytemap.js vs an independent recount, 15 blocks each
+cd scripts && python3 check_map.py [name] # bytemap.js vs an independent recount: 15 blocks, whole-Unicode overview, coverage.json
+
+# Coverage tab data (rerun after changing vocabs or freq.json)
+cd scripts && uv run --with pyarrow --with fsspec --with aiohttp --with requests python build_freq.py  # docs/freq.json from Wikipedia 20231101
+cd scripts && node build_coverage.cjs     # docs/coverage.json + docs/coverage.csv
+cd scripts && python3 build_blocks.py     # Unicode block list inside docs/bytemap.js
 ```
 
 No bundler, linter or test framework. To test one tokenizer, pass its name. Add test strings to `TESTS` in `check_hf.py` (and `tests` in `check_encoder.mjs`). The emoji block's "assigned" count depends on the Unicode version of the JS engine vs Python; `check_map.py` reports it but doesn't fail on it.
