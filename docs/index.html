@@ -58,6 +58,7 @@ header{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;
 .dock[data-state="pill"]{padding:4px}
 .dock[data-state="pill"] .dockrail,.dock[data-state="pill"] .dockbtn{display:none}
 .dock[data-state="pill"] .dockpill{display:inline-flex}
+@media (max-width:760px){.dockrail{-webkit-mask-image:linear-gradient(to right,#000 82%,transparent);mask-image:linear-gradient(to right,#000 82%,transparent);padding-right:24px}} /* hint that the dock scrolls sideways */
 @media (prefers-reduced-motion:reduce){.dock{transition:none}.chip.busy{animation:none}}
 textarea{width:100%;min-height:96px;font:1rem/1.6 var(--cjk),var(--sans);background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:0;padding:12px 14px;resize:vertical}
 textarea:focus{border-color:var(--fg)}
